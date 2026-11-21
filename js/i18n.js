@@ -31,7 +31,7 @@
     'Item': 'Barang',
     'Type the item name or code': 'Ketik nama atau kode barang',
     'Unit': 'Satuan',
-    'pcs, box, kg…': 'pcs, dus, kg…',
+    'pcs, box, kg…': 'buah, dus, kg…',
     'Quantity': 'Jumlah',
     'Quantity (+ / −)': 'Jumlah (+ / −)',
     'Use + for stock found, − for stock missing or damaged': 'Pakai + untuk stok lebih, − untuk stok hilang atau rusak',
@@ -266,6 +266,9 @@
     'Stock on hand': 'Stok barang',
     'Stock on {date}, valued at moving average cost.': 'Stok per {date}, dinilai dengan harga rata-rata bergerak.',
     'Show items with zero stock': 'Tampilkan barang dengan stok 0',
+    'As of': 'Per tanggal',
+    'As of {date}': 'Per {date}',
+    'See table': 'Lihat tabel',
     'On hand': 'Stok',
     'Value': 'Nilai',
     'Last movement': 'Mutasi terakhir',
@@ -511,7 +514,7 @@
     'Write why the report is rejected. The employee sees it.': 'Tulis alasan laporan ditolak. Pegawai akan melihatnya.',
     // data (admin)
     'Data': 'Data',
-    'Replaces all data with three sample RABs and their purchases, work reports and wages.': 'Mengganti semua data dengan tiga RAB contoh beserta pembelian, laporan kerja, dan upahnya.',
+    'Replaces all data with three sample RABs and their purchases, work reports (with example photos) and wages.': 'Mengganti semua data dengan tiga RAB contoh beserta pembelian, laporan kerja (dengan foto contoh), dan upahnya.',
     'Deletes RABs, purchases, work reports, wage payments, photos and master data, and the accounts of employees.': 'Menghapus RAB, pembelian, laporan kerja, pembayaran upah, foto, data master, dan akun pegawai.',
     'Delete ALL data — RABs, purchases, work reports, wage payments, photos and master data? The accounts of employees are deleted too. This cannot be undone.': 'Hapus SEMUA data — RAB, pembelian, laporan kerja, pembayaran upah, foto, dan data master? Akun pegawai ikut terhapus. Tindakan ini tidak bisa dibatalkan.',
   };

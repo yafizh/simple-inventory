@@ -89,6 +89,8 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
 .page-head .sub { color: var(--muted); margin-top: 4px; }
 .page-head .sub + .sub { margin-top: 2px; font-size: 12.5px; color: var(--faint); }
 .page-head .actions, .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* buttons that wrap under the title stay on the right, so the export menu (which opens to the left) stays on screen */
+.page-head .actions { margin-left: auto; }
 
 /* ---------- cards & tiles */
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
@@ -112,7 +114,7 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
 /* ---------- charts (js/charts.js) */
 .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .charts .card { margin: 0; break-inside: avoid; }
-.chart-head { margin-bottom: 12px; }
+.chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .chart-head h2 { margin: 0 0 2px; }
 .ch { position: relative; font-size: 12px; }
 .ch-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 10px; color: var(--muted); }
@@ -243,6 +245,7 @@ input:focus, select:focus, button:focus-visible, .btn:focus-visible { outline: 2
 .filters.card { margin-bottom: 16px; }
 .filters .field { min-width: 150px; }
 .filters .field.grow { flex: 1; min-width: 220px; }
+.filters > .check { padding-bottom: 8px; } /* in line with the inputs next to it */
 .check { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
 
 /* ---------- export menu */

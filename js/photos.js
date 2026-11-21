@@ -30,9 +30,8 @@
   const uid = () => ((g.crypto && g.crypto.randomUUID) ? g.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
   const Photos = {
-    /** Saves a picture and resolves with its id. */
-    put(blob) {
-      const id = uid();
+    /** Saves a picture and resolves with its id. The sample data gives the id it already put on its work reports. */
+    put(blob, id = uid()) {
       return blob.arrayBuffer().then((data) => run('readwrite', (s) => s.put({ id, type: blob.type, data }))).then(() => id);
     },
     /** Resolves with the picture as a Blob, or null when it does not exist. */

@@ -1,6 +1,6 @@
 # Simple Inventory — prototype
 
-A simple stock book for work done in **RABs** (work plans). Everything that is bought or used is for a RAB: the admin buys the items for a RAB, the employees report what they used on it with a photo, the admin approves those reports, and the wages are paid per RAB. The menu is a sidebar on the left: **Input**, **Work reports**, **RAB**, **Report**, and under **Master data** the lists of **Items**, **Employees**, **Units** and **Users**. On a small screen the sidebar is hidden and opens with the menu button (three lines) at the top left.
+A simple stock book for work done in **RABs** (work plans). Everything that is bought or used is for a RAB: the admin buys the items for a RAB, the employees report what they used on it with a photo, the admin approves those reports, and the wages are paid per RAB. The menu is a sidebar on the left: **Input**, **Work reports**, **RAB**, then under **Reports** (*LAPORAN*) the **Summary** and one page per report table (**RAB costs**, **Stock on hand**, **Stock movement**, **Wages per employee**), and under **Master data** the lists of **Items**, **Employees**, **Units** and **Users**. On a small screen the sidebar is hidden and opens with the menu button (three lines) at the top left.
 
 Plain HTML, CSS and JavaScript. No build step, no server, no libraries. Double-click `index.html` to open it. Data is saved in the browser's `localStorage`. The first time you open it, sample data is loaded.
 
@@ -10,8 +10,8 @@ You sign in first. There are three kinds of users, and each sees only its own me
 
 | Role | Menu | What they do |
 |---|---|---|
-| **Supervisor** | Report, RAB | Reads the report and its charts. Sees the RABs with their purchases, work reports, photos and wages, and the stock card of any item, but cannot change anything. Can export and print. Starts on the Report. |
-| **Admin** | Input, Work reports, RAB, Report, Master data (Items, Employees, Units, Users) | Makes the RABs (which items and how much, and which employees do the work with their wage), buys the items for them, enters adjustments after a stock count, approves, corrects or rejects the work reports the employees send, pays the wages from the RAB page, and keeps the master data and the user accounts. Sees the report too. Starts on Input. Does not send work reports. |
+| **Supervisor** | RAB, Reports | Reads the reports and their charts. Sees the RABs with their purchases, work reports, photos and wages, and the stock card of any item, but cannot change anything. Can export and print. Starts on the Summary. |
+| **Admin** | Input, Work reports, RAB, Reports, Master data (Items, Employees, Units, Users) | Makes the RABs (which items and how much, and which employees do the work with their wage), buys the items for them, enters adjustments after a stock count, approves, corrects or rejects the work reports the employees send, pays the wages from the RAB page, and keeps the master data and the user accounts. Sees the report too. Starts on Input. Does not send work reports. |
 | **Pegawai** (employee) | Report work | Sees the RABs they work on, with their wage and the items, and reports what they did: the item and quantity used, the work done and a photo. Sees their own work reports with the admin's decision: waiting, approved (and whether the admin changed it) or rejected, with the reason. |
 
 - **Demo accounts** are listed on the sign-in page: `supervisor` / `supervisor123`, `admin` / `admin123`, and one per sample employee (`budi` / `budi123`, `siti` / `siti123`, `andi` / `andi123`). Data saved before accounts existed gets the same demo accounts the first time it is opened: one per active employee, named after their first name. An account leaves that list once its password is changed.
@@ -19,7 +19,7 @@ You sign in first. There are three kinds of users, and each sees only its own me
 - **Safeguards**: there is always at least one active admin. You cannot delete your own account, change your own role or make yourself inactive. An employee with an account cannot be deleted until the account is.
 - **Your name** is at the bottom of the sidebar. Click it for **Change password**, the **language** (Indonesia / English) and **Sign out**. The admin also has **Data…** there (see *Data* below), and can set a new password for anyone in the Users list. The language can also be chosen on the sign-in page.
 - **A Pegawai report** is always made on an item of a RAB they work on (see *RAB* below) and saved as a work report in that employee's own name. It **waits for the admin's approval** (see *Work reports and approval* below). The work description and the photo are required, the date cannot be in the future or before the RAB, and the quantity cannot be more than what is left of that item on the RAB or more than the stock.
-- **Photos** are made smaller in the browser (longest side 1,280 px, JPEG) and kept in the browser's IndexedDB. The admin can also attach, replace or remove a photo on any entry, for example the receipt of a purchase. Photos are not part of the exports.
+- **Photos** are made smaller in the browser (longest side 1,280 px, JPEG) and kept in the browser's IndexedDB. The admin can also attach, replace or remove a photo on any entry, for example the receipt of a purchase. Photos are not part of the exports. The sample's work reports come with **example photos**: drawings of the work (packed boxes, folders, the printer…) with a stamp like a timestamp camera: time, day and date, RAB and employee.
 - **This is not real security.** Everything, including the accounts, is stored in this one browser, so the roles only separate what each person sees on this device. Passwords are stored as a salted hash, not as plain text. Data and photos entered on one device do not appear on another: a phone and a PC each have their own copy until there is a server.
 
 ## Pages
@@ -30,14 +30,20 @@ You sign in first. There are three kinds of users, and each sees only its own me
 | **Work reports** | The admin's list of the reports the employees sent, with a search, a RAB filter and a status filter that starts on **Waiting**. The menu shows how many are waiting. **Approve** and **Reject** are on each waiting row. Click a report to check it on its own page: the RAB, item, date, quantity, work done and photo can be corrected there before **Approve**, and the side panel shows the stock before the report and the room left on the RAB line. See *Work reports and approval* below. |
 | **RAB** | The list of work plans with their progress, and one page per RAB with its costs, employees and wages, items, purchases and work reports (with their status, and Approve / Reject for the admin). The page opens to be read: the admin buys, approves and pays from there, and changes the RAB itself with **Edit**. The supervisor reads the same page. See *RAB* below. |
 | **Report work** | The Pegawai page, made for a phone: first a short form (RAB item, date, quantity, work done, photo), then one card per open RAB they work on (their wage, who they work with, and the items with planned, reported and left; reported includes what is still waiting for approval), and the list of their own work reports with their status. On a phone the lists show as cards, so nothing runs off the screen. |
-| **Report** | Pick a period (or *This month / Last month / This year*). Six tiles show purchases, material used (the cost of the approved work reports at moving average cost), wages paid, total cost (material used + wages paid), stock value and stock adjustments. The material tile also says how many reports of the period are still waiting for approval: they are not in the figures yet. Four **charts** follow (see below). **RAB costs** shows, per RAB, the purchases, material used, wages paid and total cost in the period. Click a row to open the RAB. **Stock on hand** lists the stock at the end of the period. **Stock movement** shows opening + bought − used ± adjustment = closing per item. **Wages per employee** lists what each employee was paid in the period. Click an item's name to open its stock card. Use **Export** to save the report, or **Print** for a clean printout. |
-| **Stock card** | One item: what is on hand, its value and average cost, what the open RABs still need of it, and every purchase, approved work report and adjustment with the stock after each, newest first. Opened by clicking an item's name in Items or in the Report (and on a RAB page, for the supervisor). The admin clicks an entry to change it; a work report opens on its review page. ✕ deletes a purchase or an adjustment (a work report is rejected instead). **Export** and **Print** give the stock card as a ledger. |
+| **Reports → Summary** | Pick a period (or *This month / Last month / This year*). Six tiles show purchases, material used (the cost of the approved work reports at moving average cost), wages paid, total cost (material used + wages paid), stock value and stock adjustments. The material tile also says how many reports of the period are still waiting for approval: they are not in the figures yet. Four **charts** follow (see below). **Export** here saves the whole report: the tiles and all four tables. |
+| **Reports → RAB costs** | Per RAB: the purchases, material used, wages paid and total cost in the period, with its status and progress today. Click a row to open the RAB. |
+| **Reports → Stock on hand** | The stock of each item on one date (*As of*, the end of the period), with its average cost, value, last purchase price and last movement. Items with zero stock are hidden unless you tick *Show items with zero stock*. |
+| **Reports → Stock movement** | Per item: opening + bought − used ± adjustment = closing in the period, in quantity and value. |
+| **Reports → Wages per employee** | What each employee was paid in the period: wage, allowance or bonus, deduction and total. |
+| **Stock card** | One item: what is on hand, its value and average cost, what the open RABs still need of it, and every purchase, approved work report and adjustment with the stock after each, newest first. Opened by clicking an item's name in Items, in *Stock on hand* or *Stock movement* (and on a RAB page, for the supervisor). **Back** returns to the page it came from. The admin clicks an entry to change it; a work report opens on its review page. ✕ deletes a purchase or an adjustment (a work report is rejected instead). **Export** and **Print** give the stock card as a ledger. |
 
-There is no separate list of all transactions or of all wage payments any more: entries are found on their RAB or on the stock card of their item, work reports on the Work reports page, and the totals are in the Report.
+All report pages share one period: change it on one page and the others follow, until you change it again. Each table report has its own **Print** and **Export**, for that table only.
+
+There is no separate list of all transactions or of all wage payments any more: entries are found on their RAB or on the stock card of their item, work reports on the Work reports page, and the totals are in the reports.
 
 ## Charts
 
-The Report page shows four charts between the tiles and the tables. They follow the chosen period.
+The Summary page shows four charts under the tiles. They follow the chosen period.
 
 | Chart | What it shows |
 |---|---|
@@ -48,9 +54,9 @@ The Report page shows four charts between the tiles and the tables. They follow 
 
 - The two charts over time are grouped **per day** for a period up to 31 days, **per week** up to about six months, **per month** up to about three years, and **per year** beyond that. They start at the first transaction, so "This year" does not show empty months before it.
 - *Stock value by item* and *Cost by RAB* show the **eight largest**. The rest are added up as *Other*.
-- **Hover** over a chart (or tab to it and use the arrow keys) to read exact values. **Table** under the two charts over time shows the same figures as a table. For the other two charts, the tables below hold the figures.
+- **Hover** over a chart (or tab to it and use the arrow keys) to read exact values. **Table** under the two charts over time shows the same figures as a table. The other two charts have **See table**, which opens *Stock on hand* or *RAB costs* with their figures.
 - Each figure keeps its colour in every chart: stock value blue, purchases orange, material used green, wages yellow. The colours are checked for colour-blind readers in light and dark mode.
-- Charts are drawn by `js/charts.js` in plain HTML and SVG. They print with the report. **Export** (Excel, PDF, image, CSV) contains the tables only, not the charts.
+- Charts are drawn by `js/charts.js` in plain HTML and SVG. They print with the Summary. Its **Export** (Excel, PDF, image, CSV) contains the tiles and the tables, not the charts.
 
 ## Master data
 
@@ -133,19 +139,23 @@ Wages are paid **per RAB**, from the RAB page. There is no separate salaries pag
 
 **Data…** in the menu under your name, at the bottom of the sidebar, has two actions:
 
-- **Load sample data** replaces all data with the sample: three RABs with their purchases, work reports and wages. RAB-001 is finished, closed and paid; RAB-002 is complete, with Andi paid and Budi not yet; RAB-003 is in progress, not paid, short of tape, with two work reports waiting for approval and one rejected (Siti reported pens for labels printed on paper, then reported the paper).
+- **Load sample data** replaces all data with the sample: three RABs with their purchases, work reports (each with an example photo) and wages. The sample is in Indonesian (items, units such as *buah* and *gulung*, RABs, notes, suppliers), also when the screens are in English: like the data people enter, it does not change with the language. RAB-001 is finished, closed and paid; RAB-002 is complete, with Andi paid and Budi not yet; RAB-003 is in progress, not paid, short of tape, with two work reports waiting for approval and one rejected (Siti reported pens for labels printed on paper, then reported the paper).
 - **Delete all data** deletes the RABs, purchases, work reports, wage payments, photos and master data, and the accounts of employees. The admin and supervisor accounts stay.
 
 ## Export
 
-The **Export** menu on the Report and on a stock card saves what is on screen. The report uses the chosen period.
+The **Export** menu is on every report page and on a stock card. Reports use the chosen period.
+
+- On the **Summary** it saves the whole report: the six tiles and all four tables (the charts are not exported).
+- On a **report table** page (RAB costs, Stock on hand, Stock movement, Wages per employee) it saves that table only, named after it and its period, for example `biaya-rab_2026-11-01_2026-11-21.xlsx`, or `stok-barang_2026-11-21.xlsx` for the stock on one date.
+- On a **stock card** it saves the card as a ledger.
 
 | Format | What you get |
 |---|---|
-| **Excel (.xlsx)** | A real workbook. Numbers and dates are stored as values, not text, so you can sum and sort them. Header rows are frozen. The report has five sheets: *Summary*, *RAB*, *Stock*, *Movement* and *Wages*. |
+| **Excel (.xlsx)** | A real workbook. Numbers and dates are stored as values, not text, so you can sum and sort them. Header rows are frozen. The whole report has five sheets: *Summary*, *RAB*, *Stock*, *Movement* and *Wages*; a report table has one. |
 | **PDF** | A4 landscape with a title, period, created time, the logo and page numbers. The header row repeats on each page. Wide tables shrink to fit the page width. |
-| **Image (.png)** | The whole report or stock card as one sharp image (2×) with the logo, good for chat or email. Very long lists (about 1,000+ rows) are too tall for one image. The app then asks you to use PDF or Excel. |
-| **CSV** | Plain numbers (dot decimals), UTF-8. The report gives one CSV per table. |
+| **Image (.png)** | The whole page as one sharp image (2×) with the logo, good for chat or email. Very long lists (about 1,000+ rows) are too tall for one image. The app then asks you to use PDF or Excel. |
+| **CSV** | Plain numbers (dot decimals), UTF-8. The Summary gives one CSV per table; a report table page gives its table. |
 
 All of it is generated in the browser by `js/export.js`, without libraries or a server. The PDF uses the built-in Helvetica font, which covers Latin text, including Indonesian and accented letters. Characters outside it, such as Chinese, show as `?` in the PDF only. Excel and PNG show them correctly.
 
@@ -182,6 +192,7 @@ js/calc.js    stock maths: moving average, validation, stock, movement, timeline
 js/store.js   localStorage, master data (items, employees, units), users and sign-in, RABs with their purchases,
               work reports (and their approval) and wages, their rules, sample data
 js/photos.js  photos of entries: shrinks a picture and keeps it in IndexedDB
+js/sample-photos.js  the example photos of the sample's work reports, drawn as SVG with a date stamp
 js/export.js  Excel (.xlsx), PDF, PNG and CSV writers for one "export document" (title, summary, tables)
 js/charts.js  the report charts: line / column chart over time and ranked bars, in plain HTML and SVG
 js/app.js     sign-in, the menu per role, and the pages

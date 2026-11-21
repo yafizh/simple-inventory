@@ -46,7 +46,8 @@
   }
   const byName = (a, b) => a.name.localeCompare(b.name);
   const pad = (n) => String(n).padStart(3, '0');
-  const codePrefix = () => (g.I18N && g.I18N.lang === 'en' ? 'ITM-' : 'BRG-');
+  // item codes are BRG-001, BRG-002… (barang). Data is in Indonesian whatever the language of the screens.
+  const codePrefix = () => 'BRG-';
 
   /** Data saved before master data existed ({ seq, txs } with item and unit names): build the masters from it. */
   function fromNames(st) {
@@ -669,31 +670,29 @@
   };
   S.isEmpty = () => !S.state.txs.length && !S.state.rabs.length && !S.state.pay.length && !KINDS.some((k) => S.state[k].length);
 
-  /** Sample data around today: last month and this month, names in the active language. */
+  /** Sample data around today: last month and this month. It is in Indonesian whatever the language of the screens,
+      like the data people enter. Returns the example photos of its work reports, for the app to draw and save
+      (js/sample-photos.js): [{ id, scene, label, date, time, place, who }]. */
   S.loadSample = function (today) {
-    const id = g.I18N.lang === 'id';
     const st = blank();
     st.users = S.state.users.filter((u) => u.role !== 'pegawai'); // accounts stay; employee accounts are made again below
     ensureUsers(st);
     const unit = {}, item = {}, emp = {};
-    const U = id
-      ? { ream: ['rim', '500 lembar'], bottle: ['botol', ''], pcs: ['pcs', 'Satuan / buah'], roll: ['roll', ''], box: ['dus', ''] }
-      : { ream: ['ream', '500 sheets'], bottle: ['bottle', ''], pcs: ['pcs', 'Pieces'], roll: ['roll', ''], box: ['box', ''] };
+    // units: [name, note]
+    const U = { rim: ['rim', '500 lembar'], botol: ['botol', ''], buah: ['buah', ''], gulung: ['gulung', ''], dus: ['dus', ''] };
     for (const k in U) { unit[k] = uid(); st.units.push({ id: unit[k], name: U[k][0], note: U[k][1] }); }
-    const I = id
-      ? { paper: ['Kertas A4 80gr', 'ream'], ink: ['Tinta Printer Hitam', 'bottle'], pen: ['Pulpen Biru', 'pcs'], folder: ['Map Plastik', 'pcs'], tape: ['Lakban Coklat', 'roll'] }
-      : { paper: ['A4 Paper 80gsm', 'ream'], ink: ['Black Printer Ink', 'bottle'], pen: ['Blue Pen', 'pcs'], folder: ['Plastic Folder', 'pcs'], tape: ['Brown Packing Tape', 'roll'] };
+    // items: [name, unit]
+    const I = { paper: ['Kertas A4 80gr', 'rim'], ink: ['Tinta Printer Hitam', 'botol'], pen: ['Pulpen Biru', 'buah'], folder: ['Map Plastik', 'buah'], tape: ['Lakban Coklat', 'gulung'] };
     Object.keys(I).forEach((k, i) => { item[k] = uid(); st.items.push({ id: item[k], code: codePrefix() + pad(i + 1), name: I[k][0], unitId: unit[I[k][1]], note: '', active: true }); });
-    const E = id
-      ? { w: ['2019004', 'Budi Santoso', 'Gudang'], s: ['2021011', 'Siti Rahma', 'Penjualan'], a: ['2022003', 'Andi Pratama', 'Umum'] }
-      : { w: ['2019004', 'Budi Santoso', 'Warehouse'], s: ['2021011', 'Siti Rahma', 'Sales'], a: ['2022003', 'Andi Pratama', 'General affairs'] };
+    // employees: [employee no., name, department]
+    const E = { w: ['2019004', 'Budi Santoso', 'Gudang'], s: ['2021011', 'Siti Rahma', 'Penjualan'], a: ['2022003', 'Andi Pratama', 'Umum'] };
     for (const k in E) {
       emp[k] = uid();
       st.employees.push({ id: emp[k], code: E[k][0], name: E[k][1], dept: E[k][2], active: true });
       employeeAccount(st, st.employees[st.employees.length - 1]);
     }
 
-    const sup = id ? ['CV Sumber Kertas', 'PT Alat Tulis Jaya'] : ['Paper Source Ltd', 'Office Supplies Co'];
+    const sup = ['CV Sumber Kertas', 'PT Alat Tulis Jaya'];
     const [y, m, d] = today.split('-').map(Number);
     const day = (off) => new Date(Date.UTC(y, m - 1, d + off)).toISOString().slice(0, 10);
     // Three RABs. Everything is bought for a RAB, and what one RAB leaves over stays in stock for the next ones
@@ -705,32 +704,46 @@
     // [date, title, status, lines [item, qty], workers [employee, wage], purchases [date, item, qty, price, supplier, invoice],
     //  reports [date, item, qty, work done, employee, status (approved when left out), reason], payments [date, employee, bonus, note]]
     const R = [
-      [-40, id ? 'Pengiriman barang ke cabang' : 'Shipment to the branch office', 'closed',
+      [-40, 'Pengiriman barang ke cabang', 'closed',
         [['tape', 12], ['folder', 40], ['pen', 60]], [['w', 150000], ['s', 100000]],
         [[-39, 'tape', 20, 9500, 1, 'INV-0912'], [-39, 'folder', 100, 3000, 1, 'INV-0912'], [-39, 'pen', 200, 2500, 1, 'INV-0912']],
-        [[-37, 'tape', 12, id ? 'Mengemas 6 dus kiriman' : 'Packed 6 boxes for shipping', 'w'],
-          [-36, 'folder', 40, id ? 'Menyusun dokumen pengiriman' : 'Filed the shipping documents', 's'],
-          [-36, 'pen', 60, id ? 'Dikirim bersama paket' : 'Sent with the parcels', 's']],
-        [[-34, 'w', 0, ''], [-34, 's', 50000, id ? 'Bonus selesai lebih cepat' : 'Bonus for finishing early']]],
-      [-22, id ? 'Persiapan dokumen tender' : 'Tender document preparation', 'open',
+        [[-37, 'tape', 12, 'Mengemas 6 dus kiriman', 'w'],
+          [-36, 'folder', 40, 'Menyusun dokumen pengiriman', 's'],
+          [-36, 'pen', 60, 'Dikirim bersama paket', 's']],
+        [[-34, 'w', 0, ''], [-34, 's', 50000, 'Bonus selesai lebih cepat']]],
+      [-22, 'Persiapan dokumen tender', 'open',
         [['paper', 10], ['folder', 20], ['ink', 2]], [['a', 400000], ['w', 50000]],
         [[-21, 'paper', 30, 42000, 0, 'INV-0951'], [-21, 'ink', 6, 65000, 1, 'INV-0953']],
-        [[-19, 'paper', 6, id ? 'Mencetak dokumen penawaran' : 'Printed the bid documents', 'a'],
-          [-18, 'folder', 20, id ? 'Menyusun berkas per bagian' : 'Filed the documents by section', 'a'],
-          [-17, 'ink', 2, id ? 'Mengganti tinta printer' : 'Replaced the printer ink', 'w'],
-          [-16, 'paper', 4, id ? 'Mencetak salinan untuk arsip' : 'Printed copies for the archive', 'a']],
+        [[-19, 'paper', 6, 'Mencetak dokumen penawaran', 'a'],
+          [-18, 'folder', 20, 'Menyusun berkas per bagian', 'a'],
+          [-17, 'ink', 2, 'Mengganti tinta printer', 'w'],
+          [-16, 'paper', 4, 'Mencetak salinan untuk arsip', 'a']],
         [[-15, 'a', 0, '']]],
-      [-6, id ? 'Pindahan ruang arsip' : 'Moving the archive room', 'open',
+      [-6, 'Pindahan ruang arsip', 'open',
         [['tape', 15], ['folder', 30], ['paper', 5], ['pen', 10]], [['s', 200000], ['a', 150000]],
         [[-5, 'folder', 50, 3200, 1, 'INV-0990']],
-        [[-4, 'folder', 20, id ? 'Memindahkan arsip 2019–2021 ke map baru' : 'Moved the 2019–2021 files into new folders', 's'],
-          [-3, 'tape', 6, id ? 'Mengemas 3 lemari arsip' : 'Packed 3 filing cabinets', 'a'],
-          [-2, 'pen', 4, id ? 'Mencetak label rak' : 'Printed shelf labels', 's', 'rejected',
-            id ? 'Salah barang: label dicetak di kertas, bukan dengan pulpen. Laporkan di Kertas A4.' : 'Wrong item: the labels were printed on paper, not with pens. Report it on A4 Paper.'],
-          [-2, 'paper', 2, id ? 'Mencetak label rak' : 'Printed shelf labels', 's', 'pending'],
-          [-1, 'folder', 5, id ? 'Memasukkan arsip 2022 ke map' : 'Put the 2022 files into folders', 'a', 'pending']],
+        [[-4, 'folder', 20, 'Memindahkan arsip 2019–2021 ke map baru', 's'],
+          [-3, 'tape', 6, 'Mengemas 3 lemari arsip', 'a'],
+          [-2, 'pen', 4, 'Mencetak label rak', 's', 'rejected', 'Salah barang: label dicetak di kertas, bukan dengan pulpen. Laporkan di Kertas A4.'],
+          [-2, 'paper', 2, 'Mencetak label rak', 's', 'pending'],
+          [-1, 'folder', 5, 'Memasukkan arsip 2022 ke map', 'a', 'pending']],
         []],
     ];
+    // every work report has a photo: what it shows (a scene of js/sample-photos.js, and what is written on it)
+    const SHOT = {
+      'Mengemas 6 dus kiriman': ['boxes'],
+      'Menyusun dokumen pengiriman': ['folders', 'Pengiriman'],
+      'Dikirim bersama paket': ['pens'],
+      'Mencetak dokumen penawaran': ['print', 'PENAWARAN'],
+      'Menyusun berkas per bagian': ['folders', 'Tender'],
+      'Mengganti tinta printer': ['ink'],
+      'Mencetak salinan untuk arsip': ['print', 'SALINAN ARSIP'],
+      'Memindahkan arsip 2019–2021 ke map baru': ['folders', '2019–2021'],
+      'Mengemas 3 lemari arsip': ['cabinets'],
+      'Mencetak label rak': ['labels'],
+      'Memasukkan arsip 2022 ke map': ['folders', '2022'],
+    };
+    const shots = []; // the photos to draw: { id, scene, label, date, time, place, who }
     const admin = (st.users.find((u) => u.role === 'admin' && u.active) || { name: 'Admin' }).name;
     const entries = []; // [day, transaction], put in date order below
     const entry = (off, o) => entries.push([off, Object.assign({ date: day(off), empId: '', price: 0, party: '', ref: '', note: '', photo: '', rabId: '', lineId: '' }, o)]);
@@ -742,19 +755,24 @@
       for (const [dd, k, qty, price, s, ref] of buys) entry(dd, Object.assign(on(k), { type: 'in', qty, price, party: sup[s], ref }));
       for (const [dd, k, qty, note, e, status = 'approved', reason = ''] of reports) {
         const review = status === 'pending' ? { reviewedBy: '', reviewedAt: '' } : { reviewedBy: admin, reviewedAt: day(Math.min(dd + 1, 0)) };
-        entry(dd, Object.assign(on(k), { type: 'out', qty, note, empId: emp[e], status, reason, edited: false }, review));
+        // its example photo, taken during the working day
+        const [scene, label = ''] = SHOT[note] || ['boxes'], n = shots.length, photo = uid();
+        shots.push({ id: photo, scene, label, date: day(dd), time: `${String(8 + (n * 5) % 9).padStart(2, '0')}:${String((n * 17 + 7) % 60).padStart(2, '0')}`,
+          place: rab.no + ' · ' + rab.title, who: E[e][1] });
+        entry(dd, Object.assign(on(k), { type: 'out', qty, note, empId: emp[e], status, reason, edited: false, photo }, review));
       }
       for (const [dd, e, bonus, note] of paid) {
         st.pay.push({ id: uid(), empId: emp[e], rabId: rab.id, date: day(dd), base: rab.workers.find((w) => w.empId === emp[e]).wage, allowance: bonus, deduction: 0, note });
       }
     });
     // stock counts are not on a RAB
-    entry(-25, { type: 'adj', itemId: item.pen, qty: -5, note: id ? 'Rusak' : 'Damaged' });
-    entry(-1, { type: 'adj', itemId: item.paper, qty: -1, ref: id ? 'OPN-11' : 'CNT-11', note: id ? 'Hasil stock opname' : 'Stock count result' });
+    entry(-25, { type: 'adj', itemId: item.pen, qty: -5, note: 'Rusak' });
+    entry(-1, { type: 'adj', itemId: item.paper, qty: -1, ref: 'OPN-11', note: 'Hasil stock opname' });
     entries.sort((a, b) => a[0] - b[0]);
     for (const [, tx] of entries) st.txs.push(Object.assign({ id: uid(), seq: ++st.seq }, tx));
     S.state = st;
     S.save();
+    return shots;
   };
 
   g.S = S;

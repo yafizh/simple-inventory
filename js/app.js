@@ -1,13 +1,13 @@
 /* app.js — the pages and who may open them. Everything bought or used is for a RAB.
-   - supervisor : Report, RAB (read only), and the stock card of an item
+   - supervisor : RAB (read only), Reports (the summary and one page per table), and the stock card of an item
    - admin      : Input (purchases and adjustments), Work reports (approve, reject or correct what the employees sent),
-                  RAB (with its purchases, work reports and wages), Report, Master data (items, employees, units, users),
-                  and the stock card of an item
+                  RAB (with its purchases, work reports and wages), Reports, Master data (items, employees, units,
+                  users), and the stock card of an item
    - pegawai    : Report work (on the RAB lines given to them: a use with a photo, and their own reports)
    Only employees send work reports. They wait until the admin approves them; only approved ones are in the stock.
-   Routes: #/input, #/input/<id>, #/reports, #/reports/<id>, #/rab, #/rab/<id|new>, #/rab/<id>/edit, #/report,
-   #/stock/<itemId>, #/work, #/master/<items|employees|units|users>. Without a signed-in user every route shows the
-   sign-in page. */
+   Routes: #/input, #/input/<id>, #/reports, #/reports/<id>, #/rab, #/rab/<id|new>, #/rab/<id>/edit, #/report (summary),
+   #/report/<rab|stock|movement|wages>, #/stock/<itemId>, #/work, #/master/<items|employees|units|users>. Without a
+   signed-in user every route shows the sign-in page. */
 (function () {
   'use strict';
   const main = document.getElementById('main');
@@ -34,6 +34,10 @@
     employees: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-.5A5.5 5.5 0 0 1 8 14h2a5.5 5.5 0 0 1 5.5 5.5v.5"/><path d="M15.5 4.7a3.5 3.5 0 0 1 0 6.6"/><path d="M18 14.2a5.5 5.5 0 0 1 3.5 5.3v.5"/>',
     units: '<rect x="2.5" y="7.5" width="19" height="9" rx="1.5"/><path d="M6.5 7.5v3"/><path d="M10.5 7.5v4.5"/><path d="M14.5 7.5v3"/><path d="M18.5 7.5v4.5"/>',
     users: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10.5" r="2"/><path d="M6 15.5a3 3 0 0 1 6 0"/><path d="M15 10h3"/><path d="M15 14h3"/>',
+    receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h3"/>',
+    warehouse: '<path d="M3 20.5V9l9-5.5L21 9v11.5"/><path d="M7 20.5V12h10v8.5"/><path d="M7 16h10"/>',
+    movement: '<path d="M4 8h15"/><path d="M15 4l4 4-4 4"/><path d="M20 16H5"/><path d="M9 12l-4 4 4 4"/>',
+    wages: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v4"/><path d="M18 10v4"/>',
     updown: '<path d="M8 9l4-4 4 4"/><path d="M8 15l4 4 4-4"/>',
     camera: '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/>',
     key: '<circle cx="7.5" cy="15.5" r="3.5"/><path d="M10 13l9.5-9.5"/><path d="M16.5 6.5l2.5 2.5"/><path d="M14 9l2 2"/>',
@@ -89,12 +93,12 @@
       const kind = b.dataset.x, doc = build();
       try {
         let blob, ext = kind;
-        if (typeof base === 'function') base = base();
+        const name0 = typeof base === 'function' ? base() : base; // worked out on each export: the period may have changed
         if (kind === 'xlsx') blob = X.toXlsx(doc, { summaryName: t('Summary') });
         else if (kind === 'pdf') blob = X.toPdf(doc, { footer: doc.app + ' · ' + doc.title, pageLabel: (i, n) => t('Page {i} of {n}', { i, n }) });
         else if (kind === 'png') blob = await X.toPng(doc);
         else { const i = Number(kind.split(':')[1] || 0); blob = X.toCsv(doc.sections[i]); ext = 'csv'; }
-        const name = `${base}${kind.includes(':') ? '_' + C.key(doc.sections[Number(kind.split(':')[1])].sheet).replace(/\s+/g, '-') : ''}.${ext}`;
+        const name = `${name0}${kind.includes(':') ? '_' + C.key(doc.sections[Number(kind.split(':')[1])].sheet).replace(/\s+/g, '-') : ''}.${ext}`;
         download(name, blob);
         toast(t('Exported {file}.', { file: name }));
       } catch (err) {
@@ -534,8 +538,10 @@
     wireExport(() => stockDoc(it), `${t('stock-card')}_${C.key(it.code || it.name).replace(/\s+/g, '-')}_${today()}`);
   }
 
-  // =====================================================================================  Report
-  const period = { from: '', to: '', zero: false };
+  // =====================================================================================  Reports
+  /** The reports, under LAPORAN in the menu: the summary (#/report: the headline figures and the charts) and one page
+      per table (#/report/<key>, see REPORTS). They share one period, so it stays when going from one to another. */
+  const period = { from: '', to: '', zero: false, ready: false };
   function presets() {
     const d = today(), [y, m] = d.split('-').map(Number);
     const ym = (yy, mm) => new Date(Date.UTC(yy, mm - 1, 1)).toISOString().slice(0, 7);
@@ -545,6 +551,12 @@
       last: [last + '-01', C.dayBefore(d.slice(0, 7) + '-01')],
       year: [y + '-01-01', d],
     };
+  }
+  /** The first report opened starts on this month; after that the period stays as the user leaves it. */
+  function initPeriod() {
+    if (period.ready) return;
+    [period.from, period.to] = presets().month;
+    period.ready = true;
   }
   /** The headline figures of the report, for the tiles on screen and for the exports. */
   function reportSummary(r) {
@@ -567,17 +579,57 @@
       return Object.assign(w, { no: rab.no, title: rab.title, state: p.state, done: p.done, lines: p.lines.length });
     }).filter(Boolean).sort((a, b) => a.no.localeCompare(b.no, undefined, { numeric: true }));
   }
-  /** Export document for the report, in the order of the screen: summary tiles, RAB costs, stock on hand, stock movement, wages. */
-  function reportDoc(r) {
-    const z = (v) => (v ? v : null); // show — instead of 0, like the screen
+  /** All the figures of the reports for the period. The stock is counted at its end (asOf). */
+  function reportData() {
+    const txs = S.txs();
+    const asOf = period.to || today();
+    const stock = C.stock(txs, asOf);
+    const mv = C.movement(txs, period.from, period.to);
+    const sum = (list, k) => C.round(list.reduce((a, x) => a + x[k], 0), 2);
+    const stockValue = sum(stock, 'value'), purchases = sum(mv, 'inValue'), used = sum(mv, 'outCost'), adjValue = sum(mv, 'adjValue');
+    const inPeriod = (d) => (!period.from || d >= period.from) && (!period.to || d <= period.to);
+    const reports = txs.filter((tx) => tx.type === 'out' && inPeriod(tx.date)).length; // approved ones: S.txs() has no others
+    const waiting = S.workReports().filter((tx) => tx.status === 'pending' && inPeriod(tx.date)).length;
+    const shown = stock.filter((s) => period.zero || s.qty !== 0);
+    const fromTxt = period.from ? fmtDate(period.from) : '…', toTxt = period.to ? fmtDate(period.to) : '…';
+    const pay = C.payroll(S.pays(), period.from, period.to), salaries = sum(pay, 'total'), cost = C.round(used + salaries, 2);
+    const work = rabWork(txs, period.from, period.to);
+    return { txs, asOf, stock, shown, mv, pay, work, sum, stockValue, purchases, used, adjValue, reports, waiting, salaries, cost, fromTxt, toTxt };
+  }
+
+  /** The table reports, each on its own page and in the menu: label (menu and title), icon, asOf (counted on one date
+      instead of over the period), note (what the table shows), table (HTML), wire (after it is shown) and section
+      (the table in an export document). */
+  const REPORTS = (() => {
+    const z = (v) => (v ? v : null); // exports show — instead of 0, like the screen
+    const av = (v) => `<td class="num">${v ? esc(fmtAmt(v)) : dash}</td>`; // amount, or — for 0
+    const qv = (q, v) => `<td class="num">${q ? esc(fmtQty(q)) : dash}</td>` + (v === undefined ? '' : `<td class="num">${v ? esc(fmtAmt(v)) : dash}</td>`);
+    const itemLink = (s) => `<a href="#/stock/${esc(s.key)}">${esc(s.item)}</a>`;
+    const none = (cols, msg) => `<tr><td colspan="${cols}" class="empty">${esc(msg)}</td></tr>`;
+    const note = {
+      rab: (r) => t('Purchases, material used and wages paid per RAB from {from} to {to}. Total cost is material used + wages paid.', { from: r.fromTxt, to: r.toTxt }) + ' ' + t('Status and progress are as of today.'),
+      stock: (r) => t('Stock on {date}, valued at moving average cost.', { date: fmtDate(r.asOf) }),
+      movement: (r) => t('Opening + bought − used ± adjustment = closing, for {from} to {to}.', { from: r.fromTxt, to: r.toTxt }),
+      wages: (r) => t('Wages paid from {from} to {to}.', { from: r.fromTxt, to: r.toTxt }),
+    };
     return {
-      title: t('Report'), app: t('Simple Inventory'),
-      subtitle: [t('Period: {from} – {to}', { from: r.fromTxt, to: r.toTxt }), t('Created {date}', { date: now() })],
-      summary: reportSummary(r),
-      sections: [
-        {
-          title: t('RAB costs'), sheet: t('RAB'), empty: t('No RAB work or wages in this period.'),
-          note: t('Purchases, material used and wages paid per RAB from {from} to {to}. Total cost is material used + wages paid.', { from: r.fromTxt, to: r.toTxt }) + ' ' + t('Status and progress are as of today.'),
+      rab: {
+        label: 'RAB costs', icon: 'receipt', note: note.rab,
+        table: ({ work, sum }) => `<table class="tbl">
+          <thead><tr><th>${esc(t('RAB'))}</th><th>${esc(t('Status'))}</th><th>${esc(t('Progress'))}</th><th class="num">${esc(t('Reports'))}</th><th class="num">${esc(t('Purchases'))}</th>
+            <th class="num">${esc(t('Material used'))}</th><th class="num">${esc(t('Wages paid'))}</th><th class="num">${esc(t('Total cost'))}</th></tr></thead>
+          <tbody>${work.length ? work.map((w) => `<tr class="clickable" data-id="${esc(w.rabId)}">
+            <td><span class="nowrap">${esc(w.no)}</span><div class="muted small">${esc(w.title)}</div></td><td>${rabBadge(w.state)}</td>
+            <td class="nowrap">${esc(t('{done} of {n} lines done', { done: w.done, n: w.lines }))}</td>
+            <td class="num">${w.reports || dash}</td>${av(w.purchases)}${av(w.material)}${av(w.wages)}<td class="num">${esc(fmtAmt(w.total))}</td></tr>`).join('')
+            : none(8, t('No RAB work or wages in this period.'))}</tbody>
+          ${work.length ? `<tfoot><tr><td colspan="3">${esc(t('Total'))}</td><td class="num">${sum(work, 'reports')}</td><td class="num">${esc(fmtAmt(sum(work, 'purchases')))}</td>
+            <td class="num">${esc(fmtAmt(sum(work, 'material')))}</td><td class="num">${esc(fmtAmt(sum(work, 'wages')))}</td><td class="num">${esc(fmtAmt(sum(work, 'total')))}</td></tr></tfoot>` : ''}
+        </table>`,
+        // a RAB opens on its page
+        wire: (box) => $$('tr[data-id]', box).forEach((tr) => tr.addEventListener('click', () => { location.hash = '#/rab/' + tr.dataset.id; })),
+        section: (r) => ({
+          title: t('RAB costs'), sheet: t('RAB'), empty: t('No RAB work or wages in this period.'), note: note.rab(r),
           columns: [
             { label: t('No.'), type: 'text' }, { label: t('Work / project'), type: 'text', max: 26, grow: true }, { label: t('Status'), type: 'text' },
             { label: t('Progress'), type: 'text', max: 22 }, { label: t('Reports'), type: 'int' }, { label: t('Purchases'), type: 'amt' }, { label: t('Material used'), type: 'amt' },
@@ -585,20 +637,47 @@
           ],
           rows: r.work.map((w) => [w.no, w.title, RAB_STATE[w.state].label(), t('{done} of {n} lines done', { done: w.done, n: w.lines }), w.reports, z(w.purchases), z(w.material), z(w.wages), w.total]),
           foot: r.work.length ? [t('Total'), null, null, null, r.sum(r.work, 'reports'), r.sum(r.work, 'purchases'), r.sum(r.work, 'material'), r.sum(r.work, 'wages'), r.sum(r.work, 'total')] : null,
-        },
-        {
-          title: t('Stock on hand'), sheet: t('Stock'), empty: t('No stock.'),
-          note: t('Stock on {date}, valued at moving average cost.', { date: fmtDate(r.asOf) }),
+        }),
+      },
+      stock: {
+        label: 'Stock on hand', icon: 'warehouse', asOf: true, note: note.stock,
+        table: ({ shown, stockValue }) => `<table class="tbl">
+          <thead><tr><th>${esc(t('Item'))}</th><th>${esc(t('Unit'))}</th><th class="num">${esc(t('On hand'))}</th><th class="num">${esc(t('Average cost'))}</th><th class="num">${esc(t('Value'))}</th>
+            <th class="num">${esc(t('Last purchase price'))}</th><th>${esc(t('Last movement'))}</th></tr></thead>
+          <tbody>${shown.length ? shown.map((s) => `<tr>
+            <td>${itemLink(s)}</td><td>${esc(s.unit)}</td><td class="num">${esc(fmtQty(s.qty))}</td><td class="num">${esc(fmtAmt(s.avg))}</td><td class="num">${esc(fmtAmt(s.value))}</td>
+            <td class="num">${s.lastIn == null ? '—' : esc(fmtAmt(s.lastIn))}</td><td class="nowrap">${esc(fmtDate(s.lastDate))}</td></tr>`).join('')
+            : none(7, t('No stock.'))}</tbody>
+          ${shown.length ? `<tfoot><tr><td colspan="4">${esc(t('Total'))}</td><td class="num">${esc(fmtAmt(stockValue))}</td><td colspan="2"></td></tr></tfoot>` : ''}
+        </table>`,
+        section: (r) => ({
+          title: t('Stock on hand'), sheet: t('Stock'), empty: t('No stock.'), note: note.stock(r),
           columns: [
             { label: t('Item'), type: 'text', max: 24, grow: true }, { label: t('Unit'), type: 'text' }, { label: t('On hand'), type: 'qty' }, { label: t('Average cost'), type: 'amt' },
             { label: t('Value'), type: 'amt' }, { label: t('Last purchase price'), type: 'amt' }, { label: t('Last movement'), type: 'date' },
           ],
           rows: r.shown.map((s) => [s.item, s.unit, s.qty, C.round(s.avg, 2), s.value, s.lastIn, s.lastDate]),
           foot: r.shown.length ? [t('Total'), null, null, null, r.stockValue, null, null] : null,
-        },
-        {
-          title: t('Stock movement'), sheet: t('Movement'), empty: t('No movement in this period.'),
-          note: t('Opening + bought − used ± adjustment = closing, for {from} to {to}.', { from: r.fromTxt, to: r.toTxt }),
+        }),
+      },
+      movement: {
+        label: 'Stock movement', icon: 'movement', note: note.movement,
+        table: ({ mv, sum, purchases, used, adjValue }) => `<table class="tbl">
+          <thead>
+            <tr><th rowspan="2">${esc(t('Item'))}</th><th rowspan="2">${esc(t('Unit'))}</th><th class="num grp" colspan="2">${esc(t('Opening'))}</th><th class="num grp" colspan="2">${esc(t('Bought'))}</th>
+              <th class="num grp" colspan="2">${esc(t('Used'))}</th><th class="num grp" colspan="2">${esc(t('Adjustment'))}</th><th class="num grp" colspan="2">${esc(t('Closing'))}</th></tr>
+            <tr>${[0, 1, 2, 3, 4].map(() => `<th class="num sub">${esc(t('qty'))}</th><th class="num sub">${esc(t('value'))}</th>`).join('')}</tr>
+          </thead>
+          <tbody>${mv.length ? mv.map((m) => `<tr><td>${itemLink(m)}</td><td>${esc(m.unit)}</td>
+            ${qv(m.openQty, m.openValue)}${qv(m.inQty, m.inValue)}${qv(m.outQty, m.outCost)}${qv(m.adjQty, m.adjValue)}${qv(m.closeQty, m.closeValue)}</tr>`).join('')
+            : none(12, t('No movement in this period.'))}</tbody>
+          ${mv.length ? `<tfoot><tr><td colspan="2">${esc(t('Total'))}</td>
+            <td></td><td class="num">${esc(fmtAmt(sum(mv, 'openValue')))}</td><td></td><td class="num">${esc(fmtAmt(purchases))}</td>
+            <td></td><td class="num">${esc(fmtAmt(used))}</td><td></td><td class="num">${esc(fmtAmt(adjValue))}</td>
+            <td></td><td class="num">${esc(fmtAmt(sum(mv, 'closeValue')))}</td></tr></tfoot>` : ''}
+        </table>`,
+        section: (r) => ({
+          title: t('Stock movement'), sheet: t('Movement'), empty: t('No movement in this period.'), note: note.movement(r),
           groups: [{ label: '', span: 2 }, { label: t('Opening'), span: 2 }, { label: t('Bought'), span: 2 }, { label: t('Used'), span: 2 },
             { label: t('Adjustment'), span: 2 }, { label: t('Closing'), span: 2 }],
           columns: [{ label: t('Item'), type: 'text', max: 20, grow: true }, { label: t('Unit'), type: 'text' }]
@@ -606,21 +685,54 @@
           rows: r.mv.map((m) => [m.item, m.unit, z(m.openQty), z(m.openValue), z(m.inQty), z(m.inValue), z(m.outQty), z(m.outCost), z(m.adjQty), z(m.adjValue),
             z(m.closeQty), z(m.closeValue)]),
           foot: r.mv.length ? [t('Total'), null, null, r.sum(r.mv, 'openValue'), null, r.purchases, null, r.used, null, r.adjValue, null, r.sum(r.mv, 'closeValue')] : null,
-        },
-        {
-          title: t('Wages per employee'), sheet: t('Wages'), empty: t('No wages paid in this period.'),
-          note: t('Wages paid from {from} to {to}.', { from: r.fromTxt, to: r.toTxt }),
+        }),
+      },
+      wages: {
+        label: 'Wages per employee', icon: 'wages', note: note.wages,
+        table: ({ pay, sum, salaries }) => `<table class="tbl">
+          <thead><tr><th>${esc(t('Employee'))}</th><th>${esc(t('Department'))}</th><th class="num">${esc(t('Payments'))}</th><th class="num">${esc(t('Wage'))}</th>
+            <th class="num">${esc(t('Allowance / bonus'))}</th><th class="num">${esc(t('Deduction'))}</th><th class="num">${esc(t('Total'))}</th></tr></thead>
+          <tbody>${pay.length ? pay.map((x) => `<tr><td>${esc(x.emp)}</td><td>${esc(x.dept)}</td><td class="num">${x.count}</td><td class="num">${esc(fmtAmt(x.base))}</td>
+            ${av(x.allowance)}${av(x.deduction)}<td class="num">${esc(fmtAmt(x.total))}</td></tr>`).join('')
+            : none(7, t('No wages paid in this period.'))}</tbody>
+          ${pay.length ? `<tfoot><tr><td colspan="3">${esc(t('Total'))}</td><td class="num">${esc(fmtAmt(sum(pay, 'base')))}</td><td class="num">${esc(fmtAmt(sum(pay, 'allowance')))}</td>
+            <td class="num">${esc(fmtAmt(sum(pay, 'deduction')))}</td><td class="num">${esc(fmtAmt(salaries))}</td></tr></tfoot>` : ''}
+        </table>`,
+        section: (r) => ({
+          title: t('Wages per employee'), sheet: t('Wages'), empty: t('No wages paid in this period.'), note: note.wages(r),
           columns: [
             { label: t('Employee'), type: 'text', max: 24, grow: true }, { label: t('Department'), type: 'text', max: 18 }, { label: t('Payments'), type: 'int' },
             { label: t('Wage'), type: 'amt' }, { label: t('Allowance / bonus'), type: 'amt' }, { label: t('Deduction'), type: 'amt' }, { label: t('Total'), type: 'amt' },
           ],
           rows: r.pay.map((x) => [x.emp, x.dept, x.count, x.base, z(x.allowance), z(x.deduction), x.total]),
           foot: r.pay.length ? [t('Total'), null, null, r.sum(r.pay, 'base'), r.sum(r.pay, 'allowance'), r.sum(r.pay, 'deduction'), r.salaries] : null,
-        },
-      ],
+        }),
+      },
+    };
+  })();
+  const isReport = (key) => Object.prototype.hasOwnProperty.call(REPORTS, key);
+
+  /** Export document of the whole report (the summary page): the headline figures and the four tables. */
+  function reportDoc(r) {
+    return {
+      title: t('Report'), app: t('Simple Inventory'),
+      subtitle: [t('Period: {from} – {to}', { from: r.fromTxt, to: r.toTxt }), t('Created {date}', { date: now() })],
+      summary: reportSummary(r),
+      sections: Object.values(REPORTS).map((R) => R.section(r)),
     };
   }
-  /** The four charts of the report. Colour follows the figure: stock value, purchases, material used and wages
+  /** Export document of one table report: its title, the period (or the date the stock is counted on) and the table. */
+  function tableDoc(key, r) {
+    const R = REPORTS[key];
+    return {
+      title: t(R.label), app: t('Simple Inventory'),
+      subtitle: [R.asOf ? t('As of {date}', { date: fmtDate(r.asOf) }) : t('Period: {from} – {to}', { from: r.fromTxt, to: r.toTxt }), t('Created {date}', { date: now() })],
+      summary: [],
+      sections: [Object.assign(R.section(r), { title: '' })], // the document's title already names the table
+    };
+  }
+
+  /** The four charts of the summary. Colour follows the figure: stock value, purchases, material used and wages
       keep their colour in every chart. */
   const SERIES = {
     value: () => ({ name: t('Stock value'), color: 'var(--series-1)' }),
@@ -667,127 +779,81 @@
       series: [SERIES.used(), SERIES.wages()], fmt: fmtAmt, axisFmt });
   }
 
-  function viewReport() {
-    if (!period.from) [period.from, period.to] = presets().month;
-    const P = presets();
-    main.innerHTML = `
-      <div class="page-head"><h1>${esc(t('Report'))}</h1>
-        <div class="actions no-print"><button type="button" onclick="window.print()">${esc(t('Print'))}</button>
-          ${exportMenu([['csv:0', t('CSV — RAB costs')], ['csv:1', t('CSV — stock on hand')], ['csv:2', t('CSV — stock movement')], ['csv:3', t('CSV — wages')]])}</div></div>
-      <div class="filters card no-print">
+  /** The filter of a report page: the period, with This month / Last month / This year; or for the stock only the date it
+      is counted on, with the choice to show items with zero stock. */
+  function periodFilter(asOf) {
+    if (asOf) {
+      return `<div class="filters card no-print">
+        <div class="field"><label for="pt">${esc(t('As of'))}</label><input type="date" id="pt" value="${esc(period.to)}"></div>
+        <label class="check"><input type="checkbox" id="zero" ${period.zero ? 'checked' : ''}> ${esc(t('Show items with zero stock'))}</label></div>`;
+    }
+    return `<div class="filters card no-print">
         <div class="field"><label for="pf">${esc(t('From'))}</label><input type="date" id="pf" value="${esc(period.from)}"></div>
         <div class="field"><label for="pt">${esc(t('To'))}</label><input type="date" id="pt" value="${esc(period.to)}"></div>
         <div class="row">
           <button type="button" class="sm" data-p="month">${esc(t('This month'))}</button>
           <button type="button" class="sm" data-p="last">${esc(t('Last month'))}</button>
           <button type="button" class="sm" data-p="year">${esc(t('This year'))}</button>
-        </div>
-      </div>
-      <div id="rep"></div>`;
-    $('#pf').addEventListener('change', (e) => { period.from = e.target.value; render(); });
-    $('#pt').addEventListener('change', (e) => { period.to = e.target.value; render(); });
-    $$('[data-p]').forEach((b) => b.addEventListener('click', () => { [period.from, period.to] = P[b.dataset.p]; viewReport(); }));
+        </div></div>`;
+  }
+  /** A changed date or checkbox shows the figures again (render); a preset opens the page again with its dates (open). */
+  function wirePeriod(render, open) {
+    const P = presets(), on = (sel, f) => { const el = $(sel); if (el) el.addEventListener('change', f); };
+    on('#pf', (e) => { period.from = e.target.value; render(); });
+    on('#pt', (e) => { period.to = e.target.value; render(); });
+    on('#zero', (e) => { period.zero = e.target.checked; render(); });
+    $$('[data-p]').forEach((b) => b.addEventListener('click', () => { [period.from, period.to] = P[b.dataset.p]; open(); }));
+  }
+  /** Page head of a report: its title, what it shows (#rep-sub, filled in on each render), Print and the export menu. */
+  const reportHead = (title, menu) => `
+      <div class="page-head"><div><h1>${esc(title)}</h1><div class="sub" id="rep-sub"></div></div>
+        <div class="actions no-print"><button type="button" onclick="window.print()">${esc(t('Print'))}</button>${menu}</div></div>`;
+
+  /** The summary: the headline figures and the four charts. Its export is the whole report, with all four tables. */
+  function viewReport() {
+    initPeriod();
+    main.innerHTML = reportHead(t('Summary'), exportMenu([['csv:0', t('CSV — RAB costs')], ['csv:1', t('CSV — stock on hand')], ['csv:2', t('CSV — stock movement')], ['csv:3', t('CSV — wages')]]))
+      + `${periodFilter(false)}<div id="rep"></div>`;
     let cur = null; // figures of the last render, reused by the export
+    wirePeriod(render, viewReport);
     wireExport(() => reportDoc(cur), () => `${t('report')}_${period.from || 'start'}_${period.to || 'end'}`);
 
     function render() {
-      const txs = S.txs();
-      const asOf = period.to || today();
-      const stock = C.stock(txs, asOf);
-      const mv = C.movement(txs, period.from, period.to);
-      const sum = (list, k) => C.round(list.reduce((a, x) => a + x[k], 0), 2);
-      const stockValue = sum(stock, 'value'), purchases = sum(mv, 'inValue'), used = sum(mv, 'outCost'), adjValue = sum(mv, 'adjValue');
-      const inPeriod = (d) => (!period.from || d >= period.from) && (!period.to || d <= period.to);
-      const reports = txs.filter((tx) => tx.type === 'out' && inPeriod(tx.date)).length; // approved ones: S.txs() has no others
-      const waiting = S.workReports().filter((tx) => tx.status === 'pending' && inPeriod(tx.date)).length;
-      const shown = stock.filter((s) => period.zero || s.qty !== 0);
-      const fromTxt = period.from ? fmtDate(period.from) : '…', toTxt = period.to ? fmtDate(period.to) : '…';
-      const pay = C.payroll(S.pays(), period.from, period.to), salaries = sum(pay, 'total'), cost = C.round(used + salaries, 2);
-      const work = rabWork(txs, period.from, period.to);
-      cur = { asOf, stock, shown, mv, pay, work, sum, stockValue, purchases, used, adjValue, reports, waiting, salaries, cost, fromTxt, toTxt };
+      const r = cur = reportData();
+      $('#rep-sub').textContent = t('Period: {from} – {to}', { from: r.fromTxt, to: r.toTxt });
       // the charts cover the part of the period that has data: from the first transaction, up to today or the last one
-      const sorted = C.sort(txs), first = sorted.length ? sorted[0].date : '', last = sorted.length ? sorted[sorted.length - 1].date : '';
+      const sorted = C.sort(r.txs), first = sorted.length ? sorted[0].date : '', last = sorted.length ? sorted[sorted.length - 1].date : '';
       const cf = period.from > first ? period.from : first, ce = [period.to || '9999-12-31', last > today() ? last : today()].sort()[0];
-      const tl = first && cf <= ce ? C.timeline(txs, cf, ce) : null;
-      const av = (v) => `<td class="num">${v ? esc(fmtAmt(v)) : dash}</td>`; // amount, or — for 0
-      const qv = (q, v) => `<td class="num">${q ? esc(fmtQty(q)) : dash}</td>` + (v === undefined ? '' : `<td class="num">${v ? esc(fmtAmt(v)) : dash}</td>`);
-      const itemLink = (s) => `<a href="#/stock/${esc(s.key)}">${esc(s.item)}</a>`;
-
+      const tl = first && cf <= ce ? C.timeline(r.txs, cf, ce) : null;
+      // the two ranked charts link to the table with their figures
+      const see = (key) => `<a class="small nowrap no-print" href="#/report/${key}">${esc(t('See table'))} →</a>`;
       $('#rep').innerHTML = `
-        <div class="tiles">${reportSummary(cur).map((x) =>
+        <div class="tiles">${reportSummary(r).map((x) =>
           `<div class="tile"><div class="k">${esc(x.label)}</div><div class="v">${esc(fmtAmt(x.value))}</div><div class="f">${esc(x.note) || '&nbsp;'}</div></div>`).join('')}</div>
-
         <div class="charts">${[
-          ['c-value', t('Stock value trend'), tl ? t('Value of all stock at the end of each {unit}.', { unit: t(tl.unit) }) : ''],
-          ['c-flow', t('Purchases and material used'), tl ? t('Total per {unit}.', { unit: t(tl.unit) }) : ''],
-          ['c-stock', t('Stock value by item'), t('at {date}', { date: fmtDate(asOf) }) + ' · ' + t('Largest first.')],
-          ['c-rab', t('Cost by RAB'), (period.from || period.to ? fromTxt + ' – ' + toTxt : t('All dates')) + ' · ' + t('Largest first.')],
-        ].map(([id, title, sub]) => `<div class="card"><div class="chart-head"><h2>${esc(title)}</h2><div class="muted small">${esc(sub)}</div></div><div id="${id}"></div></div>`).join('')}</div>
-
-        <div class="card flush">
-          <div class="card-head"><div><h2>${esc(t('RAB costs'))}</h2><div class="muted small">${esc(t('Purchases, material used and wages paid per RAB from {from} to {to}. Total cost is material used + wages paid.', { from: fromTxt, to: toTxt }))}
-            ${esc(t('Status and progress are as of today.'))}</div></div></div>
-          <div class="tbl-wrap"><table class="tbl" id="rab-costs">
-            <thead><tr><th>${esc(t('RAB'))}</th><th>${esc(t('Status'))}</th><th>${esc(t('Progress'))}</th><th class="num">${esc(t('Reports'))}</th><th class="num">${esc(t('Purchases'))}</th>
-              <th class="num">${esc(t('Material used'))}</th><th class="num">${esc(t('Wages paid'))}</th><th class="num">${esc(t('Total cost'))}</th></tr></thead>
-            <tbody>${work.length ? work.map((w) => `<tr class="clickable" data-id="${esc(w.rabId)}">
-              <td><span class="nowrap">${esc(w.no)}</span><div class="muted small">${esc(w.title)}</div></td><td>${rabBadge(w.state)}</td>
-              <td class="nowrap">${esc(t('{done} of {n} lines done', { done: w.done, n: w.lines }))}</td>
-              <td class="num">${w.reports || dash}</td>${av(w.purchases)}${av(w.material)}${av(w.wages)}<td class="num">${esc(fmtAmt(w.total))}</td></tr>`).join('')
-              : `<tr><td colspan="8" class="empty">${esc(t('No RAB work or wages in this period.'))}</td></tr>`}</tbody>
-            ${work.length ? `<tfoot><tr><td colspan="3">${esc(t('Total'))}</td><td class="num">${sum(work, 'reports')}</td><td class="num">${esc(fmtAmt(sum(work, 'purchases')))}</td>
-              <td class="num">${esc(fmtAmt(sum(work, 'material')))}</td><td class="num">${esc(fmtAmt(sum(work, 'wages')))}</td><td class="num">${esc(fmtAmt(sum(work, 'total')))}</td></tr></tfoot>` : ''}
-          </table></div>
-        </div>
-
-        <div class="card flush">
-          <div class="card-head"><div><h2>${esc(t('Stock on hand'))}</h2><div class="muted small">${esc(t('Stock on {date}, valued at moving average cost.', { date: fmtDate(asOf) }))}</div></div>
-            <div class="row no-print"><label class="check small"><input type="checkbox" id="zero" ${period.zero ? 'checked' : ''}> ${esc(t('Show items with zero stock'))}</label></div></div>
-          <div class="tbl-wrap"><table class="tbl">
-            <thead><tr><th>${esc(t('Item'))}</th><th>${esc(t('Unit'))}</th><th class="num">${esc(t('On hand'))}</th><th class="num">${esc(t('Average cost'))}</th><th class="num">${esc(t('Value'))}</th>
-              <th class="num">${esc(t('Last purchase price'))}</th><th>${esc(t('Last movement'))}</th></tr></thead>
-            <tbody>${shown.length ? shown.map((s) => `<tr>
-              <td>${itemLink(s)}</td><td>${esc(s.unit)}</td><td class="num">${esc(fmtQty(s.qty))}</td><td class="num">${esc(fmtAmt(s.avg))}</td><td class="num">${esc(fmtAmt(s.value))}</td>
-              <td class="num">${s.lastIn == null ? '—' : esc(fmtAmt(s.lastIn))}</td><td class="nowrap">${esc(fmtDate(s.lastDate))}</td></tr>`).join('')
-              : `<tr><td colspan="7" class="empty">${esc(t('No stock.'))}</td></tr>`}</tbody>
-            ${shown.length ? `<tfoot><tr><td colspan="4">${esc(t('Total'))}</td><td class="num">${esc(fmtAmt(stockValue))}</td><td colspan="2"></td></tr></tfoot>` : ''}
-          </table></div>
-        </div>
-
-        <div class="card flush">
-          <div class="card-head"><div><h2>${esc(t('Stock movement'))}</h2><div class="muted small">${esc(t('Opening + bought − used ± adjustment = closing, for {from} to {to}.', { from: fromTxt, to: toTxt }))}</div></div></div>
-          <div class="tbl-wrap"><table class="tbl">
-            <thead>
-              <tr><th rowspan="2">${esc(t('Item'))}</th><th rowspan="2">${esc(t('Unit'))}</th><th class="num grp" colspan="2">${esc(t('Opening'))}</th><th class="num grp" colspan="2">${esc(t('Bought'))}</th>
-                <th class="num grp" colspan="2">${esc(t('Used'))}</th><th class="num grp" colspan="2">${esc(t('Adjustment'))}</th><th class="num grp" colspan="2">${esc(t('Closing'))}</th></tr>
-              <tr>${[0, 1, 2, 3, 4].map(() => `<th class="num sub">${esc(t('qty'))}</th><th class="num sub">${esc(t('value'))}</th>`).join('')}</tr>
-            </thead>
-            <tbody>${mv.length ? mv.map((m) => `<tr><td>${itemLink(m)}</td><td>${esc(m.unit)}</td>
-              ${qv(m.openQty, m.openValue)}${qv(m.inQty, m.inValue)}${qv(m.outQty, m.outCost)}${qv(m.adjQty, m.adjValue)}${qv(m.closeQty, m.closeValue)}</tr>`).join('')
-              : `<tr><td colspan="12" class="empty">${esc(t('No movement in this period.'))}</td></tr>`}</tbody>
-            ${mv.length ? `<tfoot><tr><td colspan="2">${esc(t('Total'))}</td>
-              <td></td><td class="num">${esc(fmtAmt(sum(mv, 'openValue')))}</td><td></td><td class="num">${esc(fmtAmt(purchases))}</td>
-              <td></td><td class="num">${esc(fmtAmt(used))}</td><td></td><td class="num">${esc(fmtAmt(adjValue))}</td>
-              <td></td><td class="num">${esc(fmtAmt(sum(mv, 'closeValue')))}</td></tr></tfoot>` : ''}
-          </table></div>
-        </div>
-
-        <div class="card flush">
-          <div class="card-head"><div><h2>${esc(t('Wages per employee'))}</h2><div class="muted small">${esc(t('Wages paid from {from} to {to}.', { from: fromTxt, to: toTxt }))}</div></div></div>
-          <div class="tbl-wrap"><table class="tbl">
-            <thead><tr><th>${esc(t('Employee'))}</th><th>${esc(t('Department'))}</th><th class="num">${esc(t('Payments'))}</th><th class="num">${esc(t('Wage'))}</th>
-              <th class="num">${esc(t('Allowance / bonus'))}</th><th class="num">${esc(t('Deduction'))}</th><th class="num">${esc(t('Total'))}</th></tr></thead>
-            <tbody>${pay.length ? pay.map((x) => `<tr><td>${esc(x.emp)}</td><td>${esc(x.dept)}</td><td class="num">${x.count}</td><td class="num">${esc(fmtAmt(x.base))}</td>
-              ${av(x.allowance)}${av(x.deduction)}<td class="num">${esc(fmtAmt(x.total))}</td></tr>`).join('')
-              : `<tr><td colspan="7" class="empty">${esc(t('No wages paid in this period.'))}</td></tr>`}</tbody>
-            ${pay.length ? `<tfoot><tr><td colspan="3">${esc(t('Total'))}</td><td class="num">${esc(fmtAmt(sum(pay, 'base')))}</td><td class="num">${esc(fmtAmt(sum(pay, 'allowance')))}</td>
-              <td class="num">${esc(fmtAmt(sum(pay, 'deduction')))}</td><td class="num">${esc(fmtAmt(salaries))}</td></tr></tfoot>` : ''}
-          </table></div>
-        </div>`;
-
-      $('#zero').addEventListener('change', (e) => { period.zero = e.target.checked; render(); });
-      $$('#rab-costs tr[data-id]').forEach((tr) => tr.addEventListener('click', () => { location.hash = '#/rab/' + tr.dataset.id; }));
-      drawCharts(tl, stock, work);
+          ['c-value', t('Stock value trend'), tl ? t('Value of all stock at the end of each {unit}.', { unit: t(tl.unit) }) : '', ''],
+          ['c-flow', t('Purchases and material used'), tl ? t('Total per {unit}.', { unit: t(tl.unit) }) : '', ''],
+          ['c-stock', t('Stock value by item'), t('at {date}', { date: fmtDate(r.asOf) }) + ' · ' + t('Largest first.'), 'stock'],
+          ['c-rab', t('Cost by RAB'), (period.from || period.to ? r.fromTxt + ' – ' + r.toTxt : t('All dates')) + ' · ' + t('Largest first.'), 'rab'],
+        ].map(([id, title, sub, key]) => `<div class="card"><div class="chart-head"><div><h2>${esc(title)}</h2><div class="muted small">${esc(sub)}</div></div>${key ? see(key) : ''}</div>
+          <div id="${id}"></div></div>`).join('')}</div>`;
+      drawCharts(tl, r.stock, r.work);
+    }
+    render();
+  }
+  /** One table report on its own page (key of REPORTS). Its export is that table. */
+  function viewTableReport(key) {
+    const R = REPORTS[key];
+    initPeriod();
+    main.innerHTML = reportHead(t(R.label), exportMenu()) + `${periodFilter(R.asOf)}<div class="card flush"><div class="tbl-wrap" id="rep"></div></div>`;
+    let cur = null;
+    wirePeriod(render, () => viewTableReport(key));
+    wireExport(() => tableDoc(key, cur), () => C.key(t(R.label)).replace(/\s+/g, '-') + '_' + (R.asOf ? period.to || today() : `${period.from || 'start'}_${period.to || 'end'}`));
+    function render() {
+      const r = cur = reportData();
+      $('#rep-sub').textContent = R.note(r);
+      $('#rep').innerHTML = R.table(r);
+      if (R.wire) R.wire($('#rep'));
     }
     render();
   }
@@ -1617,7 +1683,10 @@
     { page: 'input', label: 'Input', icon: 'input', roles: ['admin'] },
     { page: 'reports', label: 'Work reports', icon: 'reports', roles: ['admin'] },
     { page: 'rab', label: 'RAB', icon: 'rab', roles: ['admin', 'supervisor'] },
-    { page: 'report', label: 'Report', icon: 'report', roles: ['admin', 'supervisor'] },
+    // the reports: the summary, then one page per table (REPORTS)
+    { group: 'Reports', roles: ['admin', 'supervisor'] },
+    { page: 'report', label: 'Summary', icon: 'report', roles: ['admin', 'supervisor'] },
+    ...Object.keys(REPORTS).map((k) => ({ page: 'report/' + k, label: REPORTS[k].label, icon: REPORTS[k].icon, roles: ['admin', 'supervisor'] })),
     { group: 'Master data', roles: ['admin'] },
     { page: 'master/items', label: 'Items', icon: 'items', roles: ['admin'] },
     { page: 'master/employees', label: 'Employees', icon: 'employees', roles: ['admin'] },
@@ -1628,6 +1697,15 @@
   const HOME = { pegawai: 'work', admin: 'input', supervisor: 'report' };
   /** Pages outside the menu: the stock card of an item, opened from Items, the Report, a RAB page or the input page. */
   const EXTRA = { stock: ['admin', 'supervisor'] };
+  /** Replaces all data with the sample. Its work reports come with example photos (drawn by js/sample-photos.js),
+      saved like any photo once the old ones are deleted. Resolves when they are saved; never fails: the sample
+      still works without its photos. */
+  function loadSampleData() {
+    const shots = S.loadSample(today());
+    return Photos.clear()
+      .then(() => Promise.all(shots.map((p) => Photos.put(SamplePhotos.blob(p), p.id))))
+      .catch((e) => console.warn('The sample photos could not be saved.', e));
+  }
   /** Load the sample data or delete everything (admin). */
   function dataDialog() {
     const dlg = document.createElement('dialog');
@@ -1636,17 +1714,18 @@
       <p class="muted">${esc(t('Prototype — data is saved in this browser only.'))}</p>
       <div class="data-acts">
         <div><button type="button" data-a="sample">${esc(t('Load sample data'))}</button>
-          <div class="hint">${esc(t('Replaces all data with three sample RABs and their purchases, work reports and wages.'))}</div></div>
+          <div class="hint">${esc(t('Replaces all data with three sample RABs and their purchases, work reports (with example photos) and wages.'))}</div></div>
         <div><button type="button" class="danger" data-a="clear">${esc(t('Delete all data'))}</button>
           <div class="hint">${esc(t('Deletes RABs, purchases, work reports, wage payments, photos and master data, and the accounts of employees.'))}</div></div>
       </div>
       <div class="form-actions"><span class="spacer"></span><button type="button" data-a="close">${esc(t('Close'))}</button></div>`;
-    dlg.addEventListener('click', (e) => {
+    dlg.addEventListener('click', async (e) => {
       const a = e.target.closest('button[data-a]');
       if (!a) return;
       if (a.dataset.a === 'sample') {
         if (!S.isEmpty() && !confirm(t('Replace all current data with sample data?'))) return;
-        S.loadSample(today()); Photos.clear(); toast(t('Sample data loaded.'));
+        await loadSampleData(); // with its photos saved, so the page shows them
+        toast(t('Sample data loaded.'));
       } else if (a.dataset.a === 'clear') {
         if (!confirm(t('Delete ALL data — RABs, purchases, work reports, wage payments, photos and master data? The accounts of employees are deleted too. This cannot be undone.'))) return;
         S.clear(); Photos.clear(); toast(t('All data deleted.'));
@@ -1745,12 +1824,12 @@
     window.scrollTo(0, 0);
     if (!me) { viewLogin(); return; }
     // a page that is not in this role's menu (or one of its extra pages) sends the user to their home page
-    const cur = page === 'master' ? 'master/' + (MASTER[id] ? id : 'items') : page;
+    const cur = page === 'master' ? 'master/' + (MASTER[id] ? id : 'items') : page === 'report' && isReport(id) ? 'report/' + id : page;
     const mine = NAV.filter((n) => n.page && n.roles.includes(me.role));
     if (!mine.some((n) => n.page === cur) && !(EXTRA[page] || []).includes(me.role)) { location.hash = '#/' + HOME[me.role]; return; }
     curPage = cur;
     markNav();
-    if (page === 'report') viewReport();
+    if (page === 'report') { if (isReport(id)) viewTableReport(id); else viewReport(); }
     else if (page === 'reports') { if (id) viewReview(id); else viewReports(); }
     else if (page === 'master') viewMaster(id);
     else if (page === 'work') viewWork();
@@ -1778,7 +1857,7 @@
   document.documentElement.lang = I18N.lang;
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
 
-  if (!S.load()) S.loadSample(today()); // first visit: start with sample data
   window.addEventListener('hashchange', route);
-  route();
+  // first visit: start with the sample data, once its photos are saved
+  if (S.load()) route(); else loadSampleData().then(route);
 })();
