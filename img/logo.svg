@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Simple Inventory: a closed box on a blue tile. Same shapes as the logo in js/export.js. -->
+  <rect width="32" height="32" rx="8" fill="#1f5fbf"/>
+  <g stroke="#1f5fbf" stroke-width="1.1" stroke-linejoin="round">
+    <path d="M16 5.5 25 10.75 16 16 7 10.75Z" fill="#ffffff"/>
+    <path d="M7 10.75 16 16V26.5L7 21.25Z" fill="#c5d5ee"/>
+    <path d="M25 10.75 16 16V26.5L25 21.25Z" fill="#86a9dc"/>
+  </g>
+  <path d="M20.5 8.125 11.5 13.375" stroke="#1f5fbf" stroke-width="1.6" stroke-linecap="round"/>
+</svg>

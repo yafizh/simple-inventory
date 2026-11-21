@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inventori Sederhana</title>
+  <link rel="icon" href="img/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1e26" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="mobilebar">
+    <button type="button" class="ghost icon-btn" id="navToggle" aria-controls="sidebar" aria-expanded="false" aria-label="Menu">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>
+    </button>
+    <div class="brand"><img class="logo" src="img/logo.svg" alt="" width="28" height="28"><span class="name" data-i18n="Simple Inventory">Simple Inventory</span></div>
+  </header>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><img class="logo" src="img/logo.svg" alt="" width="28" height="28"><span class="name" data-i18n="Simple Inventory">Simple Inventory</span></div>
+    <nav class="nav" id="nav" aria-label="Menu"></nav>
+    <div class="side-foot" id="meBox"></div>
+  </aside>
+  <div class="nav-backdrop" id="navBackdrop"></div>
+  <div class="content">
+    <div class="print-brand"><img class="logo" src="img/logo.svg" alt="" width="22" height="22"><span data-i18n="Simple Inventory">Simple Inventory</span></div>
+    <main id="main"></main>
+    <footer class="foot-note muted small" data-i18n="Prototype — data is saved in this browser only.">Prototype — data is saved in this browser only.</footer>
+  </div>
+  <div id="toasts" aria-live="polite"></div>
+
+  <script src="js/i18n.js"></script>
+  <script src="js/calc.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/photos.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
