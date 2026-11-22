@@ -2,7 +2,10 @@
 
 A simple stock book for work done in **RABs** (work plans). Everything that is bought or used is for a RAB: the admin buys the items for a RAB, the employees report what they used on it with a photo, the admin approves those reports, and the wages are paid per RAB. The menu is a sidebar on the left: **Input**, **Work reports**, **RAB**, then under **Reports** (*LAPORAN*) the **Summary** and one page per report table (**RAB costs**, **Stock on hand**, **Stock movement**, **Wages per employee**), and under **Master data** the lists of **Items**, **Employees**, **Units** and **Users**. On a small screen the sidebar is hidden and opens with the menu button (three lines) at the top left.
 
-Plain HTML, CSS and JavaScript. No build step, no server, no libraries. Double-click `index.html` to open it. Data is saved in the browser's `localStorage`. The first time you open it, sample data is loaded.
+Plain HTML, CSS and JavaScript. No build step, no libraries. It runs in two ways:
+
+- **On one device:** double-click `index.html`. Data is saved in the browser's `localStorage`, and the first time you open it, sample data is loaded. No install, no sync.
+- **With the server, for every device:** run `node server/server.js` (Node 18 or newer, no packages) and open `http://localhost:8080`. The app can then be **installed** (PWA), **works offline**, and **syncs** its data with the server, so the PC and the phones share the same data. See *Offline, install and sync* below.
 
 ## Users and roles
 
@@ -20,7 +23,7 @@ You sign in first. There are three kinds of users, and each sees only its own me
 - **Your name** is at the bottom of the sidebar. Click it for **Change password**, the **language** (Indonesia / English) and **Sign out**. The admin also has **Data…** there (see *Data* below), and can set a new password for anyone in the Users list. The language can also be chosen on the sign-in page.
 - **A Pegawai report** is always made on an item of a RAB they work on (see *RAB* below) and saved as a work report in that employee's own name. It **waits for the admin's approval** (see *Work reports and approval* below). The work description and the photo are required, the date cannot be in the future or before the RAB, and the quantity cannot be more than what is left of that item on the RAB or more than the stock.
 - **Photos** are made smaller in the browser (longest side 1,280 px, JPEG) and kept in the browser's IndexedDB. The admin can also attach, replace or remove a photo on any entry, for example the receipt of a purchase. Photos are not part of the exports. The sample's work reports come with **example photos**: drawings of the work (packed boxes, folders, the printer…) with a stamp like a timestamp camera: time, day and date, RAB and employee.
-- **This is not real security.** Everything, including the accounts, is stored in this one browser, so the roles only separate what each person sees on this device. Passwords are stored as a salted hash, not as plain text. Data and photos entered on one device do not appear on another: a phone and a PC each have their own copy until there is a server.
+- **This is not real security.** Opened as a file, everything, including the accounts, is stored in this one browser, so the roles only separate what each person sees on this device. With the server, each device signs in on it, and the server refuses changes a role may not make (see below), but every signed-in device still receives all the data, and the demo passwords are shown on the sign-in page. Passwords are stored as a salted hash, not as plain text.
 
 ## Pages
 
@@ -172,6 +175,27 @@ All of it is generated in the browser by `js/export.js`, without libraries or a 
 - **Older entries** from before purchases and use were tied to a RAB stay as they are. They show on the stock card and can be changed without choosing a RAB. Their old selling prices are no longer used.
 - **Numbers and dates** follow the language. Indonesian (default) shows `1.234,56` and `28-Okt-2026`, English shows `1,234.56` and `28-Oct-2026`. CSV files use plain numbers.
 
+## Offline, install and sync
+
+Run the server and open the app from it:
+
+```
+node server/server.js            # http://localhost:8080, data in server/data/
+node server/server.js --port 3000 --data /srv/inventori
+```
+
+- **Install:** the browser offers to install the app (Chrome/Edge: the install icon in the address bar, or **Install app** in the menu under your name and on the sign-in page; Android: *Install app*; iPhone: *Share → Add to Home Screen*). It then opens in its own window with the logo, like an app.
+- **Offline:** after the first visit the app opens and works without a connection: every file of it is kept by the service worker (`sw.js`), and the data is on the device as before. Everything can be entered offline: purchases, work reports with photos, approvals, payments, master data.
+- **Sync:** what is entered on a device waits there until it is sent to the server, and what other devices sent comes back. The status is above your name in the sidebar (on a phone: the cloud icon at the top right): *Synced 10:41*, *3 changes not sent*, *Offline · 2 not sent*, *Syncing…*. Click it to sync now.
+- **Automatic or manual** (menu under your name → *Sync*), per device. **Automatic** (the default) sends a change a moment after it is saved, and syncs again when the connection comes back, when the app is shown again and every minute. **Manual** only syncs with *Sync now* (or a click on the status).
+- **A new device** needs a connection once: sign in, and the server checks the password and sends all the data. After that the same person can sign in offline on it. A device that already has data sends it on its first sync.
+- **Two devices change the same record** (the same RAB, item or report): the one sent last wins. Records are whole: a RAB with its lines, a report, a payment.
+- **What each role may send** is checked by the server: the admin anything; an employee only their own work reports while they wait for approval, and their own password; the supervisor only their own password. Anything else is refused, and the device puts back the server's version.
+- **Photos** go to the server with the reports and purchases that use them, and are fetched by the other devices when they show them.
+- **Data…** (*Load sample data*, *Delete all data*) changes the data on the server and so on every device.
+- **On phones** the app must be opened over **HTTPS** to be installed and to work offline (browsers allow it on `http://localhost` only). Put the server behind a reverse proxy with a certificate (for example Caddy: `inventori.example.com { reverse_proxy localhost:8080 }`), or a tunnel that gives an HTTPS address.
+- **The server's data** is in `server/data/` (or `--data`): `db.json` (every record and when it last changed), `sessions.json` (signed-in devices) and `photos/`. Back up that folder. A new server starts with the two accounts *admin / admin123* and *supervisor / supervisor123*; load the sample data from the admin's menu, or start entering data.
+
 ## Design
 
 - **Logo**: a closed box on a blue tile (`img/logo.svg`), next to the name in the sidebar, on the sign-in page, as the browser tab icon, on printouts, and in the PDF and PNG exports. A phone that adds the app to its home screen uses `img/apple-touch-icon.png`.
@@ -184,15 +208,23 @@ All of it is generated in the browser by `js/export.js`, without libraries or a 
 
 ```
 index.html
+manifest.webmanifest  the app's name, colours and icons for installing it (PWA)
+sw.js                 the service worker: keeps the app's files so it opens and works offline
+server/server.js      the sync server: serves the app, keeps the shared data, accounts and photos (Node, no packages)
+video/promo-inventori-sederhana.mp4  promotional video (Indonesian, narrated by Ardi, with original music, 0:53)
+video/demo-inventori-sederhana.mp4   demo of the three roles, offline and sync (Indonesian, narrated by Ardi, 3:00)
+video/narasi-promo.*, narasi-demo.*  their subtitles (.srt) and narration scripts (.md); video/produksi/ makes them again
 img/logo.svg              the logo (also the browser tab icon)
 img/apple-touch-icon.png  the logo as a home-screen icon (180×180)
+img/icon-192.png, icon-512.png, icon-maskable-512.png  the app icons for installing it
 css/app.css
 js/i18n.js    language (Indonesian / English) and number/date formatting
 js/calc.js    stock maths: moving average, validation, stock, movement, timeline and RAB cost reports, CSV (no DOM)
 js/store.js   localStorage, master data (items, employees, units), users and sign-in, RABs with their purchases,
               work reports (and their approval) and wages, their rules, sample data
-js/photos.js  photos of entries: shrinks a picture and keeps it in IndexedDB
+js/photos.js  photos of entries: shrinks a picture and keeps it in IndexedDB (and fetches one taken on another device)
 js/sample-photos.js  the example photos of the sample's work reports, drawn as SVG with a date stamp
+js/sync.js    offline first: sends what changed on this device and puts in what changed elsewhere (with the server)
 js/export.js  Excel (.xlsx), PDF, PNG and CSV writers for one "export document" (title, summary, tables)
 js/charts.js  the report charts: line / column chart over time and ranked bars, in plain HTML and SVG
 js/app.js     sign-in, the menu per role, and the pages

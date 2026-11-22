@@ -120,8 +120,8 @@
 
   // ---- the scenes, one per kind of work. o: { label } — what is written on the folder or paper
   const SCENES = {
-    boxes: () => room(560) + shadow(512, 600, 380, 26)
-      + box(230, 450, 200, 150) + box(440, 450, 200, 150, 'CABANG') + box(650, 450, 200, 150)
+    boxes: (o) => room(560) + shadow(512, 600, 380, 26)
+      + box(230, 450, 200, 150) + box(440, 450, 200, 150, o.label || 'CABANG') + box(650, 450, 200, 150)
       + box(335, 300, 200, 150) + box(545, 300, 200, 150) + box(440, 150, 200, 150) + tapeRoll(900, 640),
     cabinets: () => room(600) + cabinet(170, 240, 200, 360) + cabinet(410, 240, 200, 360) + cabinet(650, 240, 200, 360),
     folders: (o) => desk(260) + folder(520, 470, -9, '#3f7fd6') + folder(500, 480, 4, '#2f9b6f') + folder(512, 490, -2, '#e2a72e', o.label),

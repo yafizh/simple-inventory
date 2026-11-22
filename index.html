@@ -6,6 +6,7 @@
   <title>Inventori Sederhana</title>
   <link rel="icon" href="img/logo.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1a1e26" media="(prefers-color-scheme: dark)">
   <link rel="stylesheet" href="css/app.css">
@@ -16,6 +17,7 @@
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>
     </button>
     <div class="brand"><img class="logo" src="img/logo.svg" alt="" width="28" height="28"><span class="name" data-i18n="Simple Inventory">Simple Inventory</span></div>
+    <button type="button" class="ghost icon-btn sync-mini" id="syncMini" hidden></button>
   </header>
   <aside class="sidebar" id="sidebar">
     <div class="brand"><img class="logo" src="img/logo.svg" alt="" width="28" height="28"><span class="name" data-i18n="Simple Inventory">Simple Inventory</span></div>
@@ -35,6 +37,7 @@
   <script src="js/store.js"></script>
   <script src="js/photos.js"></script>
   <script src="js/sample-photos.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/export.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>

@@ -201,6 +201,16 @@
   S.save = function () {
     cache = cacheAll = null;
     try { g.localStorage.setItem(KEY, JSON.stringify(S.state)); } catch (e) { console.warn('save failed', e); }
+    if (S.onSave) S.onSave();
+  };
+  /** Called after every save (js/sync.js counts what is not sent yet, and sends it). */
+  S.onSave = null;
+  /** The kinds of records that are synced: each is a list of records with an id. */
+  S.SYNCED = ['units', 'items', 'employees', 'users', 'rabs', 'txs', 'pay'];
+  /** After js/sync.js put in records from the server: the counter of transactions follows, and it is saved. */
+  S.synced = function () {
+    S.state.seq = S.state.txs.reduce((m, x) => Math.max(m, x.seq || 0), S.state.seq || 0);
+    S.save();
   };
 
   // ---- master data

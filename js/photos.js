@@ -34,10 +34,20 @@
     put(blob, id = uid()) {
       return blob.arrayBuffer().then((data) => run('readwrite', (s) => s.put({ id, type: blob.type, data }))).then(() => id);
     },
-    /** Resolves with the picture as a Blob, or null when it does not exist. */
+    /** Resolves with the picture as a Blob, or null when it does not exist. A picture taken on another device is
+        fetched from the sync server (js/sync.js sets Photos.remote) and kept here. */
     get(id) {
-      return run('readonly', (s) => s.get(id)).then((r) => (r ? new Blob([r.data], { type: r.type }) : null));
+      return Photos.local(id).then((blob) => {
+        if (blob || !id || !Photos.remote) return blob;
+        return Photos.remote(id).then((b) => (b ? Photos.put(b, id).then(() => b) : null));
+      });
     },
+    /** The picture if it is on this device, or null. */
+    local(id) {
+      return id ? run('readonly', (s) => s.get(id)).then((r) => (r ? new Blob([r.data], { type: r.type }) : null)) : Promise.resolve(null);
+    },
+    /** Set by js/sync.js: (id) → Promise of the picture from the server, or null. */
+    remote: null,
     remove(id) { return id ? run('readwrite', (s) => s.delete(id)).catch(() => {}) : Promise.resolve(); },
     clear() { return run('readwrite', (s) => s.clear()).catch(() => {}); },
     /** Turns a chosen file into a smaller JPEG. Rejects when the browser cannot read it as a picture. */

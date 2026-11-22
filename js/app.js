@@ -45,6 +45,12 @@
     out: '<path d="M10 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H10"/><path d="M15 8l4 4-4 4"/><path d="M19 12H9.5"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     edit: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M13.5 8.5l2 2"/>',
+    cloud: '<path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.1 4.75 4.75 0 0 0 7 18.5z"/>',
+    cloudOk: '<path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.1 4.75 4.75 0 0 0 7 18.5z"/><path d="M9.5 13.8l1.8 1.8 3.4-3.6"/>',
+    cloudOff: '<path d="M9.5 9.2a6 6 0 0 1 8.6 1.34 4 4 0 0 1 1.9 6.8"/><path d="M15.5 18.5H7a4.75 4.75 0 0 1-1.3-9.3"/><path d="M3.5 3.5l17 17"/>',
+    sync: '<path d="M19.5 11A7.5 7.5 0 0 0 6.2 7.2L4.5 9"/><path d="M4.5 4.5V9H9"/><path d="M4.5 13a7.5 7.5 0 0 0 13.3 3.8L19.5 15"/><path d="M19.5 19.5V15H15"/>',
+    alert: '<path d="M12 3.5l9 15.5H3z"/><path d="M12 10v4"/><path d="M12 16.8v.2"/>',
+    download: '<path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/>',
   };
   const icon = (name, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[name] || ''}</svg>`;
   // a work report sent by an employee waits for the admin, who approves or rejects it
@@ -1632,7 +1638,10 @@
       if (!photo.has()) errors.push(t('Add a photo.'));
       const res = errors.length ? { errors } : await saveTx(x, photo, '');
       if (res.errors.length) { $('#errs').innerHTML = errBox(res.errors); return; }
-      toast(t('Report sent: {qty} {item}. It waits for approval.', { qty: qu(res.tx.qty, res.tx.unit), item: res.tx.item }));
+      // with sync, a report made offline or in manual mode stays on this device until the next sync
+      const v = { qty: qu(res.tx.qty, res.tx.unit), item: res.tx.item };
+      toast(Sync.enabled && (!Sync.online || Sync.mode === 'manual')
+        ? t('Report saved on this device: {qty} {item}. It is sent with the next sync.', v) : t('Report sent: {qty} {item}. It waits for approval.', v));
       viewWork();
     });
     onLine();
@@ -1644,7 +1653,10 @@
     sel.addEventListener('change', () => I18N.setLang(sel.value));
   }
   function viewLogin() {
-    const demo = S.users().filter((u) => u.demo && u.active).sort((a, b) => S.ROLES.indexOf(a.role) - S.ROLES.indexOf(b.role));
+    // the demo accounts of this device, or of the server for a device that has no data yet
+    const local = S.users().filter((u) => u.demo && u.active).map((u) => ({ role: u.role, username: u.username, demo: u.demo }));
+    const demo = (local.length ? local : Sync.demo.map((u) => ({ role: u.role, username: u.username, demo: u.password })))
+      .filter((u) => ROLE[u.role]).sort((a, b) => S.ROLES.indexOf(a.role) - S.ROLES.indexOf(b.role));
     main.innerHTML = `
       <div class="login">
         <div class="login-brand"><img class="logo" src="img/logo.svg" alt="" width="56" height="56">
@@ -1655,6 +1667,7 @@
           <div id="errs"></div>
           <button type="submit" class="primary">${esc(t('Sign in'))}</button>
           <div class="field"><label for="l-lang">${esc(t('Language'))}</label><select id="l-lang"></select></div>
+          ${installEvt ? `<button type="button" id="b-install">${icon('download')}${esc(t('Install app'))}</button>` : ''}
         </form>
         ${demo.length ? `<div class="card flush"><div class="card-head"><div><h2>${esc(t('Demo accounts'))}</h2><div class="muted small">${esc(t('Click one to fill in the form.'))}</div></div></div>
           <div class="tbl-wrap"><table class="tbl"><thead><tr><th>${esc(t('Role'))}</th><th>${esc(t('Username'))}</th><th>${esc(t('Password'))}</th></tr></thead>
@@ -1663,10 +1676,27 @@
     const form = $('#loginForm');
     langPicker($('#l-lang'));
     $$('tr[data-u]').forEach((tr) => tr.addEventListener('click', () => { form.username.value = tr.dataset.u; form.password.value = tr.dataset.p; form.querySelector('button').focus(); }));
-    form.addEventListener('submit', (e) => {
+    if (installEvt) $('#b-install').addEventListener('click', install);
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!S.login(form.username.value, form.password.value)) { $('#errs').innerHTML = errBox([t('Wrong username or password.')]); return; }
-      route();
+      const name = form.username.value, pass = form.password.value, btn = $('button[type=submit]', form);
+      const fail = (msg) => { $('#errs').innerHTML = errBox([msg]); };
+      // known on this device: signed in at once, also offline; a sync token is fetched when there is none yet
+      const me = S.login(name, pass);
+      if (me) {
+        route();
+        if (Sync.enabled && Sync.online && !Sync.hasToken(me.id)) Sync.login(name, pass).then(() => Sync.now()).catch(() => {});
+        return;
+      }
+      if (!Sync.enabled) { fail(t('Wrong username or password.')); return; }
+      // not known here (a new device, or a new account): the server checks it and sends the data
+      btn.disabled = true;
+      try {
+        await Sync.login(name, pass);
+        if (S.login(name, pass)) route(); else fail(t('Wrong username or password.'));
+      } catch (err) {
+        fail(err.status === 401 ? t('Wrong username or password.') : t('The server cannot be reached. Sign in once while online.'));
+      } finally { btn.disabled = false; }
     });
     form.username.focus();
   }
@@ -1711,7 +1741,7 @@
     const dlg = document.createElement('dialog');
     dlg.className = 'dlg';
     dlg.innerHTML = `<h2>${esc(t('Data'))}</h2>
-      <p class="muted">${esc(t('Prototype — data is saved in this browser only.'))}</p>
+      <p class="muted">${esc(Sync.enabled ? t('With sync, this also changes the data on the server and on every device.') : t('Prototype — data is saved in this browser only.'))}</p>
       <div class="data-acts">
         <div><button type="button" data-a="sample">${esc(t('Load sample data'))}</button>
           <div class="hint">${esc(t('Replaces all data with three sample RABs and their purchases, work reports (with example photos) and wages.'))}</div></div>
@@ -1762,23 +1792,29 @@
   }
   /** Initials for the avatar: the first letters of the first two words of a name. */
   const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-  /** Sidebar for the signed-in user: their menu, and at the bottom their name, which opens a menu with change
-      password, Data (admin), the language and sign out. */
+  /** Sidebar for the signed-in user: their menu, the sync status, and at the bottom their name, which opens a menu
+      with change password, Data (admin), install, the sync mode, the language and sign out. */
   function shell() {
     const me = S.me();
     document.body.classList.toggle('signed-out', !me);
-    if (!me) return;
+    if (!me) { syncStatus(); return; }
     document.getElementById('nav').innerHTML = navHtml(me);
     const box = document.getElementById('meBox');
-    box.innerHTML = `<details class="menu user-menu">
+    const radio = (on, attr, label) => `<button type="button" role="menuitemradio" aria-checked="${on}" ${attr}>${icon('check', on ? '' : 'blank')}${esc(label)}</button>`;
+    box.innerHTML = `<div id="syncBox"></div><details class="menu user-menu">
       <summary title="${esc(t('Account'))}"><span class="avatar" aria-hidden="true">${esc(initials(me.name))}</span>
         <span class="who"><strong>${esc(me.name)}</strong><span class="muted small">${esc(ROLE[me.role].label())} · ${esc(me.username)}</span></span>${icon('updown')}</summary>
       <div class="menu-list" role="menu">
         <button type="button" role="menuitem" data-a="pass">${icon('key')}${esc(t('Change password'))}</button>
         ${me.role === 'admin' ? `<button type="button" role="menuitem" data-a="data">${icon('data')}${esc(t('Data'))}…</button>` : ''}
+        ${installEvt ? `<button type="button" role="menuitem" data-a="install">${icon('download')}${esc(t('Install app'))}</button>` : ''}
+        ${Sync.enabled ? `<div class="menu-sep" role="separator"></div>
+          <div class="menu-label">${esc(t('Sync'))}</div>
+          ${radio(Sync.mode === 'auto', 'data-sync="auto"', t('Automatic'))}${radio(Sync.mode === 'manual', 'data-sync="manual"', t('Manual'))}
+          <button type="button" role="menuitem" data-a="sync">${icon('sync')}${esc(t('Sync now'))}</button>` : ''}
         <div class="menu-sep" role="separator"></div>
         <div class="menu-label">${esc(t('Language'))}</div>
-        ${Object.entries(I18N.LANGS).map(([k, label]) => `<button type="button" role="menuitemradio" aria-checked="${k === I18N.lang}" data-lang="${k}">${icon('check', k === I18N.lang ? '' : 'blank')}${esc(label)}</button>`).join('')}
+        ${Object.entries(I18N.LANGS).map(([k, label]) => radio(k === I18N.lang, `data-lang="${k}"`, label)).join('')}
         <div class="menu-sep" role="separator"></div>
         <button type="button" role="menuitem" data-a="out">${icon('out')}${esc(t('Sign out'))}</button>
       </div></details>`;
@@ -1787,11 +1823,59 @@
       if (!b) return;
       b.closest('details').open = false;
       if (b.dataset.lang) { if (b.dataset.lang !== I18N.lang) I18N.setLang(b.dataset.lang); }
+      else if (b.dataset.sync) { Sync.setMode(b.dataset.sync); shell(); }
+      else if (b.dataset.a === 'sync') Sync.now();
+      else if (b.dataset.a === 'install') install();
       else if (b.dataset.a === 'data') dataDialog();
       else if (b.dataset.a === 'out') signOut();
       else if (b.dataset.a === 'pass') changePassword(me);
     });
+    syncStatus();
   }
+
+  // ---- offline and sync (js/sync.js): what is shown, and installing the app
+  /** The state of the sync in a few words, with its icon and colour; null when the app does not sync. */
+  function syncInfo() {
+    if (!Sync.enabled) return null;
+    const n = Sync.pending, hhmm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+    if (Sync.busy) return { cls: 'busy', icon: 'sync', text: t('Syncing…') };
+    if (!Sync.online) return { cls: 'off', icon: 'cloudOff', text: n ? t('Offline · {n} not sent', { n }) : t('Offline') };
+    if (Sync.error === 'sign-in') return { cls: 'err', icon: 'alert', text: t('Sign in again to sync') };
+    if (Sync.error) return { cls: 'err', icon: 'alert', text: t('Sync failed · try again') };
+    if (n) return { cls: 'wait', icon: 'cloud', text: t('{n} changes not sent', { n }) };
+    return { cls: 'ok', icon: 'cloudOk', text: Sync.last ? t('Synced {time}', { time: hhmm(Sync.last) }) : t('Not synced yet') };
+  }
+  /** The sync status above the user in the sidebar, and its icon in the top bar of a phone. Clicking syncs now; when
+      the sign-in has expired, it signs out, to sign in again. */
+  function syncStatus() {
+    const s = S.me() && syncInfo(), box = document.getElementById('syncBox'), mini = document.getElementById('syncMini');
+    mini.hidden = !s;
+    document.querySelector('.foot-note').textContent = Sync.enabled ? t('Data is kept on this device and synced with the server.') : t('Prototype — data is saved in this browser only.');
+    if (!s) { if (box) box.innerHTML = ''; return; }
+    if (box) box.innerHTML = `<button type="button" class="sync-pill ${s.cls}" title="${esc(t('Sync now'))}">${icon(s.icon)}<span>${esc(s.text)}</span></button>`;
+    mini.className = `ghost icon-btn sync-mini ${s.cls}`;
+    mini.title = s.text;
+    mini.innerHTML = icon(s.icon) + (Sync.pending ? `<span class="n">${Sync.pending}</span>` : '');
+  }
+  function syncClick() { if (Sync.error === 'sign-in') signOut(); else Sync.now(); }
+  document.getElementById('meBox').addEventListener('click', (e) => { if (e.target.closest('.sync-pill')) syncClick(); });
+  document.getElementById('syncMini').addEventListener('click', syncClick);
+  let dirty = false; // something was typed on the page shown
+  main.addEventListener('input', () => { dirty = true; });
+  /** Data came from other devices: the menu (waiting reports) and the page show it, unless something is being typed
+      or a dialog is open (then the next page shows it). */
+  function refresh() {
+    updateNav();
+    if (!S.me() || dirty || document.querySelector('dialog[open]')) return;
+    const y = window.scrollY;
+    route(true);
+    window.scrollTo(0, y);
+  }
+  // installing as an app (PWA): the browser offers it once the app qualifies; shown in the user menu and on the sign-in page
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (S.me()) shell(); else if (!dirty) route(); });
+  window.addEventListener('appinstalled', () => { installEvt = null; toast(t('App installed.')); if (S.me()) shell(); });
+  function install() { if (installEvt) installEvt.prompt().catch(() => {}); }
   function signOut() {
     S.logout();
     history.replaceState(null, '', location.pathname + location.search); // the next user starts on their own home page
@@ -1813,15 +1897,16 @@
     });
   }
   let here = '', from = ''; // this page and the one before it (the input page goes back to a RAB or stock card)
-  function route() {
+  /** Shows the page of the address. keep: the same page again with new data (keeps the drawer and the scroll). */
+  function route(keep) {
     if (location.hash !== here) { from = here; here = location.hash; }
     const me = S.me();
     const [, page = '', id, sub] = (location.hash || '').split('/');
     document.querySelectorAll('dialog.dlg').forEach((d) => d.close());
     urls.splice(0).forEach((u) => URL.revokeObjectURL(u));
-    setNav(false);
+    dirty = false;
+    if (keep !== true) { setNav(false); window.scrollTo(0, 0); }
     shell();
-    window.scrollTo(0, 0);
     if (!me) { viewLogin(); return; }
     // a page that is not in this role's menu (or one of its extra pages) sends the user to their home page
     const cur = page === 'master' ? 'master/' + (MASTER[id] ? id : 'items') : page === 'report' && isReport(id) ? 'report/' + id : page;
@@ -1858,6 +1943,13 @@
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
 
   window.addEventListener('hashchange', route);
-  // first visit: start with the sample data, once its photos are saved
-  if (S.load()) route(); else loadSampleData().then(route);
+  // works offline once loaded (sw.js); not possible when opened as a file
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  Sync.onChange(syncStatus);
+  Sync.onData = refresh;
+  Sync.start().then(() => {
+    // this device's data; a new device that syncs gets it from the server when someone signs in, one that does not
+    // starts with the sample data (once its photos are saved)
+    if (S.load() || Sync.enabled) { route(); Sync.ready(); } else loadSampleData().then(route);
+  });
 })();
