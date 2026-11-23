@@ -269,6 +269,18 @@
     'Delete {name}?': 'Hapus {name}?',
     'Deleted: {name}.': 'Dihapus: {name}.',
     'Saved: {name}.': 'Tersimpan: {name}.',
+    // types of work (jenis pekerjaan)
+    'Types of work': 'Jenis Pekerjaan',
+    'Type of work': 'Jenis pekerjaan',
+    'Add type of work': 'Tambah jenis pekerjaan',
+    'Edit type of work': 'Ubah jenis pekerjaan',
+    'New type of work': 'Jenis pekerjaan baru',
+    'No types of work yet.': 'Belum ada jenis pekerjaan.',
+    'Bricklayer, tiling, painting…': 'Tukang batu, pasang keramik, pengecatan…',
+    'Inactive types of work cannot be given to anyone new on a RAB.': 'Jenis pekerjaan nonaktif tidak bisa diberikan ke pegawai baru di RAB.',
+    'RABs': 'RAB',
+    'Choose the type of work.': 'Pilih jenis pekerjaan.',
+    'Your work: {job}': 'Pekerjaan Anda: {job}',
     // report
     'Period': 'Periode',
     'This month': 'Bulan ini',
@@ -387,7 +399,7 @@
     'This RAB has {n} salary payments and cannot be deleted. Close it instead.': 'RAB ini punya {n} pembayaran gaji dan tidak bisa dihapus. Tutup saja RAB-nya.',
     // RAB workers: one wage per employee per RAB
     'Employees and wages': 'Pegawai dan upah',
-    'Who works on this RAB, with one wage each for the whole RAB. They can all use the items below.': 'Siapa yang mengerjakan RAB ini, dengan satu upah per pegawai untuk seluruh RAB. Mereka semua bisa memakai barang di bawah.',
+    'Who works on this RAB, the type of work each one does, and one wage each for the whole RAB. They can all use the items below.': 'Siapa yang mengerjakan RAB ini, jenis pekerjaan masing-masing, dan satu upah per pegawai untuk seluruh RAB. Mereka semua bisa memakai barang di bawah.',
     'The items and quantities planned for this work.': 'Barang dan jumlah yang direncanakan untuk pekerjaan ini.',
     'Remove employee': 'Hapus pegawai',
     'Reports': 'Laporan',

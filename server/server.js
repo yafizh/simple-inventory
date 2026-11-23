@@ -10,7 +10,7 @@
 
    Data (in --data, default server/data, never served):
    - db.json       { rev, records: { "<kind>/<id>": { rev, data } } } — every record of the app with the revision it was
-                   last changed at; data null = deleted. kinds: units, items, employees, users, rabs, txs, pay
+                   last changed at; data null = deleted. kinds: units, items, employees, jobs, users, rabs, txs, pay
    - sessions.json { "<token>": { userId, at } } — signed-in devices
    - photos/       one file per photo, and <id>.type with its content type
    API (JSON, Authorization: Bearer <token> except info and login):
@@ -33,7 +33,7 @@ const arg = (name, def) => { const i = process.argv.indexOf('--' + name); return
 const PORT = Number(arg('port', process.env.PORT || 8080));
 const ROOT = path.resolve(__dirname, '..');
 const DATA = path.resolve(arg('data', process.env.INV_DATA || path.join(__dirname, 'data')));
-const KINDS = new Set(['units', 'items', 'employees', 'users', 'rabs', 'txs', 'pay']);
+const KINDS = new Set(['units', 'items', 'employees', 'jobs', 'users', 'rabs', 'txs', 'pay']);
 const SAFE_ID = /^[\w-]{1,100}$/;
 const MAX_JSON = 20 * 1024 * 1024, MAX_PHOTO = 8 * 1024 * 1024;
 const SESSION_DAYS = 60;

@@ -1,15 +1,17 @@
 /* store.js — keeps the data in localStorage.
-   State: { v: 10, seq, txs: [transaction], items: [item], units: [unit], employees: [employee], users: [user], pay: [payment], rabs: [rab] }
+   State: { v: 11, seq, txs: [transaction], items: [item], units: [unit], employees: [employee], jobs: [job], users: [user], pay: [payment], rabs: [rab] }
    - unit     : { id, name, note }
    - item     : { id, code, name, unitId, note, active }
    - employee : { id, code, name, dept, active }
+   - job      : { id, name, note, active } — a type of work (jenis pekerjaan), e.g. Tukang batu, Pasang keramik
    - payment  : { id, empId, rabId (the RAB the wage is for), date (paid on), base, allowance, deduction, note }
                 Salaries are paid per RAB: base is the employee's wage on that RAB (see rab.workers). Payments from before (when salaries
                 were monthly) have no rabId but a month: 'YYYY-MM'; they are kept as they are.
    - user     : { id, username, name, role: 'supervisor'|'admin'|'pegawai', empId (pegawai only), salt, hash, active, demo }
-   - rab      : { id, no, title, date, note, status: 'open'|'closed', lines: [{ id, itemId, qty }], workers: [{ empId, wage }] }
-                The work plan (RAB): which items and how much (lines), and which employees do the work with one wage
-                each for the whole RAB (workers). Everything bought or used is for a RAB: a purchase and a work report
+   - rab      : { id, no, title, date, note, status: 'open'|'closed', lines: [{ id, itemId, qty }], workers: [{ empId, jobId, wage }] }
+                The work plan (RAB): which items and how much (lines), and which employees do the work, each with
+                their type of work (jobId) and one wage for the whole RAB (workers). Workers saved before types of
+                work existed have jobId ''. Everything bought or used is for a RAB: a purchase and a work report
                 both have the rabId and the lineId of the RAB line of their item. Every worker can use every item of
                 the RAB. There is one shared stock: what one RAB does not use stays in stock for the next ones.
    - transaction : { id, seq, date, type, itemId, empId, qty, price, party, ref, note, photo, rabId, lineId }
@@ -30,9 +32,9 @@
 (function (g) {
   'use strict';
   const KEY = 'inv-simple-v1', SESSION = 'inv-simple-session';
-  const KINDS = ['items', 'employees', 'units'];
+  const KINDS = ['items', 'employees', 'units', 'jobs'];
   const ROLES = ['supervisor', 'admin', 'pegawai'];
-  const blank = () => ({ v: 10, seq: 0, txs: [], items: [], units: [], employees: [], users: [], pay: [], rabs: [] });
+  const blank = () => ({ v: 11, seq: 0, txs: [], items: [], units: [], employees: [], jobs: [], users: [], pay: [], rabs: [] });
   const S = { state: blank(), KINDS, ROLES };
   const tr = (s, v) => C.tr(s, v);
   let cache = null, cacheAll = null; // transactions with names (in the stock / all), rebuilt after every change
@@ -78,7 +80,7 @@
     for (const l of rab.lines) {
       if (l.empId) {
         let w = workers.find((x) => x.empId === l.empId);
-        if (!w) { w = { empId: l.empId, wage: 0 }; workers.push(w); }
+        if (!w) { w = { empId: l.empId, jobId: '', wage: 0 }; workers.push(w); }
         w.wage = C.round(w.wage + (l.wage || 0), 2);
       }
       const keep = byItem.get(l.itemId);
@@ -102,7 +104,10 @@
     if (!(out.v >= 4)) for (const e of out.employees) if (e.active && !out.users.some((u) => u.empId === e.id)) employeeAccount(out, e);
     if (!out.pay) out.pay = [];
     if (!out.rabs) out.rabs = [];
+    if (!out.jobs) out.jobs = [];
     for (const r of out.rabs) if (!r.workers) rabWorkers(out, r);
+    // v11: each worker has a type of work; those saved before have none
+    for (const r of out.rabs) for (const w of r.workers) if (w.jobId === undefined) w.jobId = '';
     // v9: the RAB has its own column now, so a work report no longer keeps the RAB number as its reference
     if (!(out.v >= 9)) {
       for (const tx of out.txs) {
@@ -112,7 +117,7 @@
     }
     // v10: work reports are approved by the admin; the ones saved before were already in the stock
     if (!(out.v >= 10)) for (const tx of out.txs) if (tx.type === 'out' && !tx.status) tx.status = 'approved';
-    out.v = 10;
+    out.v = 11;
     return out;
   }
   /** Today in this browser's time zone, as YYYY-MM-DD. */
@@ -206,7 +211,7 @@
   /** Called after every save (js/sync.js counts what is not sent yet, and sends it). */
   S.onSave = null;
   /** The kinds of records that are synced: each is a list of records with an id. */
-  S.SYNCED = ['units', 'items', 'employees', 'users', 'rabs', 'txs', 'pay'];
+  S.SYNCED = ['units', 'items', 'employees', 'jobs', 'users', 'rabs', 'txs', 'pay'];
   /** After js/sync.js put in records from the server: the counter of transactions follows, and it is saved. */
   S.synced = function () {
     S.state.seq = S.state.txs.reduce((m, x) => Math.max(m, x.seq || 0), S.state.seq || 0);
@@ -223,9 +228,11 @@
     if (!k) return null;
     return S.state.items.find((x) => C.key(x.name) === k) || S.state.items.find((x) => x.code && C.key(x.code) === k) || null;
   };
-  /** How many records point to this one: items for a unit, transactions for an item or an employee. */
+  /** How many records point to this one: items for a unit, RABs for a type of work, transactions for an item or an
+      employee. */
   S.usage = function (kind, id) {
     if (kind === 'units') return S.state.items.filter((x) => x.unitId === id).length;
+    if (kind === 'jobs') return S.state.rabs.filter((r) => r.workers.some((w) => w.jobId === id)).length;
     const f = kind === 'items' ? 'itemId' : 'empId';
     return S.state.txs.filter((x) => x[f] === id).length;
   };
@@ -237,13 +244,14 @@
   };
   /** A number typed into a form: empty counts as 0. */
   const amount = (v) => (String(v == null ? '' : v).trim() === '' ? 0 : Number(v));
-  /** Validate, then add (no id) or replace (with id) a unit, item or employee. Returns { errors, row }. */
+  /** Validate, then add (no id) or replace (with id) a unit, item, employee or type of work. Returns { errors, row }. */
   S.putMaster = function (kind, input) {
     const list = S.state[kind];
     const old = input.id ? S.find(kind, input.id) : null;
     const others = list.filter((x) => x !== old);
     const row = { id: old ? old.id : uid(), name: C.clean(input.name) };
-    if (kind !== 'units') { row.code = C.clean(input.code); row.active = input.active !== false; }
+    if (kind === 'items' || kind === 'employees') row.code = C.clean(input.code);
+    if (kind !== 'units') row.active = input.active !== false;
     if (kind === 'items') row.unitId = input.unitId || '';
     if (kind === 'employees') row.dept = C.clean(input.dept);
     else row.note = C.clean(input.note);
@@ -266,7 +274,8 @@
     if (account) return tr('This employee has a user account ({name}). Delete the account first.', { name: account.username });
     if (kind === 'employees' && S.state.pay.some((p) => p.empId === id)) return tr('This employee has salary payments and cannot be deleted. Make them inactive instead.');
     const rab = kind === 'items' ? S.state.rabs.find((r) => r.lines.some((l) => l.itemId === id))
-      : kind === 'employees' ? S.state.rabs.find((r) => r.workers.some((w) => w.empId === id)) : null;
+      : kind === 'employees' ? S.state.rabs.find((r) => r.workers.some((w) => w.empId === id))
+      : kind === 'jobs' ? S.state.rabs.find((r) => r.workers.some((w) => w.jobId === id)) : null;
     if (rab) return tr('This record is used in {no} and cannot be deleted. Make it inactive instead.', { no: rab.no });
     if (n) {
       return kind === 'units' ? tr('This unit is used by {n} items and cannot be deleted.', { n })
@@ -288,12 +297,14 @@
   S.pay = (id) => { const p = id && S.state.pay.find((x) => x.id === id); return p ? namedPay(p) : null; };
   /** An employee's wage on a RAB (0 when they are not on it). */
   S.wageOf = (rab, empId) => { const w = rab && rab.workers.find((x) => x.empId === empId); return w ? w.wage : 0; };
-  /** The workers of a RAB with their name, wage, number of work reports and payment (or null). */
+  /** The name of a worker's type of work on a RAB ('' when none was set). */
+  S.jobOf = (rab, empId) => { const w = rab && rab.workers.find((x) => x.empId === empId), j = w && S.find('jobs', w.jobId); return j ? j.name : ''; };
+  /** The workers of a RAB with their name, type of work, wage, number of work reports and payment (or null). */
   S.rabWages = function (rab) {
     return rab.workers.map((w) => {
-      const e = S.find('employees', w.empId), p = S.state.pay.find((x) => x.rabId === rab.id && x.empId === w.empId);
+      const e = S.find('employees', w.empId), j = S.find('jobs', w.jobId), p = S.state.pay.find((x) => x.rabId === rab.id && x.empId === w.empId);
       const reports = S.state.txs.filter((x) => x.rabId === rab.id && x.type === 'out' && x.empId === w.empId && statusOf(x) !== 'rejected').length;
-      return { empId: w.empId, emp: e ? e.name : '', dept: e ? e.dept : '', wage: w.wage, reports, pay: p ? namedPay(p) : null };
+      return { empId: w.empId, emp: e ? e.name : '', dept: e ? e.dept : '', jobId: w.jobId || '', job: j ? j.name : '', wage: w.wage, reports, pay: p ? namedPay(p) : null };
     });
   };
   /** Validate, then add (no id) or replace (with id) a salary payment. One payment per employee per RAB.
@@ -461,13 +472,14 @@
     }
     return out;
   };
-  /** The open RABs an employee works on, oldest first: { rab, wage, lines }. */
+  /** The open RABs an employee works on, oldest first: { rab, job, wage, lines }. */
   S.tasks = function (empId) {
     return S.rabs().reverse().filter((r) => r.status === 'open' && r.workers.some((w) => w.empId === empId))
-      .map((rab) => ({ rab, wage: S.wageOf(rab, empId), lines: S.rabLines(rab) }));
+      .map((rab) => ({ rab, job: S.jobOf(rab, empId), wage: S.wageOf(rab, empId), lines: S.rabLines(rab) }));
   };
   /** Validate, then add (no id) or replace (with id) a RAB.
-      input.lines: [{ id (kept lines), itemId, qty }], input.workers: [{ empId, wage }].
+      input.lines: [{ id (kept lines), itemId, qty }], input.workers: [{ empId, jobId, wage }]. Every worker needs a type
+      of work, except one saved before types of work existed, who may stay without.
       A line that already has purchases or reports keeps its item and cannot be removed, and cannot go below what is
       reported. A worker who has reported work or is paid on the RAB cannot be removed. The date cannot move past the
       first purchase, report or payment on the RAB. Returns { errors, row }. */
@@ -488,16 +500,19 @@
       if (first && row.date > first) errors.push(tr('The RAB date cannot be after {date}, the date of its first purchase, report or payment.', { date: day(first) }));
     }
 
-    // workers: one wage per employee for the whole RAB
+    // workers: each employee once, with their type of work and one wage for the whole RAB
     const oldWorkers = old ? old.workers : [];
     (input.workers || []).forEach((x, i) => {
-      const emp = S.find('employees', x.empId), wage = amount(x.wage), errs = [];
+      const emp = S.find('employees', x.empId), job = S.find('jobs', x.jobId), wage = amount(x.wage), errs = [];
+      const prev = emp ? oldWorkers.find((w) => w.empId === emp.id) : null;
       if (!emp) errs.push(tr('Choose an employee.'));
       else if (row.workers.some((w) => w.empId === emp.id)) errs.push(tr('{name} is already on the list.', { name: emp.name }));
-      else if (!emp.active && !oldWorkers.some((w) => w.empId === emp.id)) errs.push(tr('{name} is inactive and cannot be used in a new transaction.', { name: emp.name }));
+      else if (!emp.active && !prev) errs.push(tr('{name} is inactive and cannot be used in a new transaction.', { name: emp.name }));
+      if (!job) { if (!(prev && !prev.jobId && !x.jobId)) errs.push(tr('Choose the type of work.')); }
+      else if (!job.active && !(prev && prev.jobId === job.id)) errs.push(tr('{name} is inactive and cannot be used in a new transaction.', { name: job.name }));
       if (!(wage >= 0)) errs.push(tr('The wage cannot be negative.'));
       errs.forEach((m) => errors.push(tr('Employee {n}: {msg}', { n: i + 1, msg: m })));
-      if (!errs.length) row.workers.push({ empId: emp.id, wage: C.round(wage, 2) });
+      if (!errs.length) row.workers.push({ empId: emp.id, jobId: job ? job.id : '', wage: C.round(wage, 2) });
     });
     if (!(input.workers || []).length) errors.push(tr('Add at least one employee who does the work.'));
     for (const w of oldWorkers) {
@@ -687,7 +702,7 @@
     const st = blank();
     st.users = S.state.users.filter((u) => u.role !== 'pegawai'); // accounts stay; employee accounts are made again below
     ensureUsers(st);
-    const unit = {}, item = {}, emp = {};
+    const unit = {}, item = {}, emp = {}, job = {};
     // units: [name, note]
     const U = { rim: ['rim', '500 lembar'], botol: ['botol', ''], buah: ['buah', ''], gulung: ['gulung', ''], dus: ['dus', ''] };
     for (const k in U) { unit[k] = uid(); st.units.push({ id: unit[k], name: U[k][0], note: U[k][1] }); }
@@ -701,6 +716,10 @@
       st.employees.push({ id: emp[k], code: E[k][0], name: E[k][1], dept: E[k][2], active: true });
       employeeAccount(st, st.employees[st.employees.length - 1]);
     }
+    // types of work: [name, note]
+    const J = { pack: ['Pengemasan', 'Mengemas dan menyiapkan kiriman'], doc: ['Administrasi dokumen', 'Menyusun dan mengarsipkan berkas'],
+      print: ['Pencetakan', ''], care: ['Perawatan alat', 'Printer dan peralatan kantor'], move: ['Angkut & pindahan', ''] };
+    for (const k in J) { job[k] = uid(); st.jobs.push({ id: job[k], name: J[k][0], note: J[k][1], active: true }); }
 
     const sup = ['CV Sumber Kertas', 'PT Alat Tulis Jaya'];
     const [y, m, d] = today.split('-').map(Number);
@@ -711,18 +730,18 @@
     // - RAB-002: complete, Andi is paid and Budi not yet
     // - RAB-003: in progress, not paid, and short of tape: 9 rolls still to use, 2 in stock. Two work reports wait for
     //   the admin, and one was rejected (Siti reported pens for labels printed on paper, then reported the paper).
-    // [date, title, status, lines [item, qty], workers [employee, wage], purchases [date, item, qty, price, supplier, invoice],
+    // [date, title, status, lines [item, qty], workers [employee, type of work, wage], purchases [date, item, qty, price, supplier, invoice],
     //  reports [date, item, qty, work done, employee, status (approved when left out), reason], payments [date, employee, bonus, note]]
     const R = [
       [-40, 'Pengiriman barang ke cabang', 'closed',
-        [['tape', 12], ['folder', 40], ['pen', 60]], [['w', 150000], ['s', 100000]],
+        [['tape', 12], ['folder', 40], ['pen', 60]], [['w', 'pack', 150000], ['s', 'doc', 100000]],
         [[-39, 'tape', 20, 9500, 1, 'INV-0912'], [-39, 'folder', 100, 3000, 1, 'INV-0912'], [-39, 'pen', 200, 2500, 1, 'INV-0912']],
         [[-37, 'tape', 12, 'Mengemas 6 dus kiriman', 'w'],
           [-36, 'folder', 40, 'Menyusun dokumen pengiriman', 's'],
           [-36, 'pen', 60, 'Dikirim bersama paket', 's']],
         [[-34, 'w', 0, ''], [-34, 's', 50000, 'Bonus selesai lebih cepat']]],
       [-22, 'Persiapan dokumen tender', 'open',
-        [['paper', 10], ['folder', 20], ['ink', 2]], [['a', 400000], ['w', 50000]],
+        [['paper', 10], ['folder', 20], ['ink', 2]], [['a', 'print', 400000], ['w', 'care', 50000]],
         [[-21, 'paper', 30, 42000, 0, 'INV-0951'], [-21, 'ink', 6, 65000, 1, 'INV-0953']],
         [[-19, 'paper', 6, 'Mencetak dokumen penawaran', 'a'],
           [-18, 'folder', 20, 'Menyusun berkas per bagian', 'a'],
@@ -730,7 +749,7 @@
           [-16, 'paper', 4, 'Mencetak salinan untuk arsip', 'a']],
         [[-15, 'a', 0, '']]],
       [-6, 'Pindahan ruang arsip', 'open',
-        [['tape', 15], ['folder', 30], ['paper', 5], ['pen', 10]], [['s', 200000], ['a', 150000]],
+        [['tape', 15], ['folder', 30], ['paper', 5], ['pen', 10]], [['s', 'doc', 200000], ['a', 'move', 150000]],
         [[-5, 'folder', 50, 3200, 1, 'INV-0990']],
         [[-4, 'folder', 20, 'Memindahkan arsip 2019–2021 ke map baru', 's'],
           [-3, 'tape', 6, 'Mengemas 3 lemari arsip', 'a'],
@@ -759,7 +778,7 @@
     const entry = (off, o) => entries.push([off, Object.assign({ date: day(off), empId: '', price: 0, party: '', ref: '', note: '', photo: '', rabId: '', lineId: '' }, o)]);
     R.forEach(([off, title, status, lines, workers, buys, reports, paid], i) => {
       const rab = { id: uid(), no: 'RAB-' + pad(i + 1), title, date: day(off), note: '', status,
-        lines: lines.map(([k, qty]) => ({ id: uid(), itemId: item[k], qty })), workers: workers.map(([e, wage]) => ({ empId: emp[e], wage })) };
+        lines: lines.map(([k, qty]) => ({ id: uid(), itemId: item[k], qty })), workers: workers.map(([e, j, wage]) => ({ empId: emp[e], jobId: job[j], wage })) };
       st.rabs.push(rab);
       const on = (k) => ({ rabId: rab.id, lineId: rab.lines.find((l) => l.itemId === item[k]).id, itemId: item[k] });
       for (const [dd, k, qty, price, s, ref] of buys) entry(dd, Object.assign(on(k), { type: 'in', qty, price, party: sup[s], ref }));

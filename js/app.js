@@ -1,12 +1,12 @@
 /* app.js — the pages and who may open them. Everything bought or used is for a RAB.
    - supervisor : RAB (read only), Reports (the summary and one page per table), and the stock card of an item
    - admin      : Input (purchases and adjustments), Work reports (approve, reject or correct what the employees sent),
-                  RAB (with its purchases, work reports and wages), Reports, Master data (items, employees, units,
-                  users), and the stock card of an item
+                  RAB (with its purchases, work reports and wages), Reports, Master data (items, employees, types of
+                  work, units, users), and the stock card of an item
    - pegawai    : Report work (on the RAB lines given to them: a use with a photo, and their own reports)
    Only employees send work reports. They wait until the admin approves them; only approved ones are in the stock.
    Routes: #/input, #/input/<id>, #/reports, #/reports/<id>, #/rab, #/rab/<id|new>, #/rab/<id>/edit, #/report (summary),
-   #/report/<rab|stock|movement|wages>, #/stock/<itemId>, #/work, #/master/<items|employees|units|users>. Without a
+   #/report/<rab|stock|movement|wages>, #/stock/<itemId>, #/work, #/master/<items|employees|jobs|units|users>. Without a
    signed-in user every route shows the sign-in page. */
 (function () {
   'use strict';
@@ -32,6 +32,7 @@
     report: '<path d="M4 4v15a1 1 0 0 0 1 1h15"/><path d="M8.5 16v-4"/><path d="M13 16V8"/><path d="M17.5 16v-6"/>',
     items: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5"/><path d="M12 12v9"/>',
     employees: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-.5A5.5 5.5 0 0 1 8 14h2a5.5 5.5 0 0 1 5.5 5.5v.5"/><path d="M15.5 4.7a3.5 3.5 0 0 1 0 6.6"/><path d="M18 14.2a5.5 5.5 0 0 1 3.5 5.3v.5"/>',
+    jobs: '<path d="M3 18.5h18"/><path d="M5 18.5v-2a7 7 0 0 1 14 0v2"/><path d="M10 9.8V6.5a2 2 0 0 1 4 0v3.3"/>',
     units: '<rect x="2.5" y="7.5" width="19" height="9" rx="1.5"/><path d="M6.5 7.5v3"/><path d="M10.5 7.5v4.5"/><path d="M14.5 7.5v3"/><path d="M18.5 7.5v4.5"/>',
     users: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10.5" r="2"/><path d="M6 15.5a3 3 0 0 1 6 0"/><path d="M15 10h3"/><path d="M15 14h3"/>',
     receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h3"/>',
@@ -896,6 +897,18 @@
       row: (x) => [x.code, x.name, x.dept, [fmtQty(S.usage('employees', x.id))], { html: status(x) }],
       text: (x) => [x.code, x.name, x.dept],
     },
+    // types of work (jenis pekerjaan): what an employee does on a RAB
+    jobs: {
+      title: () => t('Types of work'), add: () => t('Add type of work'), edit: () => t('Edit type of work'), empty: () => t('No types of work yet.'), search: () => t('Name, note…'),
+      fields: () => [
+        { name: 'name', label: t('Name'), placeholder: t('Bricklayer, tiling, painting…') },
+        { name: 'note', label: t('Note'), placeholder: t('Optional') },
+        { name: 'active', label: t('Active'), type: 'checkbox', hint: t('Inactive types of work cannot be given to anyone new on a RAB.') },
+      ],
+      head: () => [t('Name'), t('Note'), [t('RABs')], t('Status')],
+      row: (x) => [x.name, x.note, [fmtQty(S.usage('jobs', x.id))], { html: status(x) }],
+      text: (x) => [x.name, x.note],
+    },
     units: {
       title: () => t('Units'), add: () => t('Add unit'), edit: () => t('Edit unit'), empty: () => t('No units yet.'), search: () => t('Name, note…'),
       fields: () => [
@@ -923,7 +936,7 @@
       text: (x) => [x.username, x.name, ROLE[x.role].label()],
     },
   };
-  // the store functions of a list; items, employees and units share the general ones
+  // the store functions of a list; items, employees, types of work and units share the general ones
   const mList = (kind) => (MASTER[kind].list ? MASTER[kind].list() : S.list(kind));
   const mFind = (kind, id) => (MASTER[kind].find ? MASTER[kind].find(id) : S.find(kind, id));
   const mLabel = (kind, row) => (MASTER[kind].label ? MASTER[kind].label(row) : row.name);
@@ -953,7 +966,7 @@
     });
   }
 
-  const mq = { items: '', employees: '', units: '', users: '' };
+  const mq = { items: '', employees: '', jobs: '', units: '', users: '' };
   function viewMaster(kind) {
     if (!MASTER[kind]) kind = 'items';
     const M = MASTER[kind];
@@ -1108,7 +1121,7 @@
     function render() {
       const q = rabFilter.q.trim().toLowerCase();
       const list = S.rabs().map((r) => Object.assign({ rab: r, team: S.rabWages(r) }, S.rabProgress(r))).filter((x) => (!rabFilter.state || x.state === rabFilter.state) &&
-        (!q || [x.rab.no, x.rab.title, x.rab.note].concat(x.lines.flatMap((l) => [l.item, l.code]), x.team.map((w) => w.emp)).join(' ').toLowerCase().includes(q)));
+        (!q || [x.rab.no, x.rab.title, x.rab.note].concat(x.lines.flatMap((l) => [l.item, l.code]), x.team.flatMap((w) => [w.emp, w.job])).join(' ').toLowerCase().includes(q)));
       const box = $('#tbl');
       box.innerHTML = list.length ? `<div class="tbl-wrap"><table class="tbl">
           <thead><tr><th>${esc(t('No.'))}</th><th>${esc(t('Date'))}</th><th>${esc(t('Work / project'))}</th><th>${esc(t('Employees'))}</th>
@@ -1116,7 +1129,7 @@
           <tbody>${list.map((x) => `<tr class="clickable" data-id="${esc(x.rab.id)}">
             <td class="nowrap">${esc(x.rab.no)}</td><td class="nowrap">${esc(fmtDate(x.rab.date))}</td>
             <td class="name">${esc(x.rab.title)}${x.rab.note ? `<div class="muted small">${esc(x.rab.note)}</div>` : ''}</td>
-            <td>${esc(x.team.map((w) => w.emp).join(', '))}</td>
+            <td>${x.team.map((w) => esc(w.emp) + (w.job ? ` <span class="muted small">(${esc(w.job)})</span>` : '')).join(', ')}</td>
             <td class="nowrap">${esc(t('{done} of {n} lines done', { done: x.done, n: x.lines.length }))}<div class="muted small">${esc([t('{n} reports', { n: x.reports }), t('{n} purchases', { n: x.purchases })].join(' · '))}${x.waiting ? ` · <span class="warn-text">${esc(t('{n} waiting', { n: x.waiting }))}</span>` : ''}</div></td>
             <td>${rabBadge(x.state)}</td></tr>`).join('')}</tbody>
         </table></div><div class="muted small foot">${esc(t('{n} rows', { n: list.length }))}</div>`
@@ -1153,9 +1166,12 @@
     const lineHas = (lineId) => !!lineId && S.all().some((x) => x.lineId === lineId && x.type !== 'adj');
     // inactive items and employees can only stay where they already are
     const keepItems = new Set(rab ? rab.lines.map((l) => l.itemId) : []), keepEmps = new Set(rab ? rab.workers.map((w) => w.empId) : []);
+    const keepJobs = new Set(rab ? rab.workers.map((w) => w.jobId).filter(Boolean) : []);
     const itemOptions = () => S.list('items').filter((x) => x.active || keepItems.has(x.id))
       .map((x) => `<option value="${esc(x.name)}" label="${esc([x.code, S.unitName(x)].filter(Boolean).join(' · '))}">`).join('');
     const emps = S.list('employees').filter((x) => x.active || keepEmps.has(x.id));
+    const jobOptions = (jobId) => `<option value="">${esc(t('— choose —'))}</option>` + S.list('jobs').filter((x) => x.active || keepJobs.has(x.id))
+      .map((x) => `<option value="${esc(x.id)}" ${jobId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
     const est = (itemId, qty) => (itemId && qty > 0 && avgOf(itemId) ? C.round(qty * avgOf(itemId), 2) : 0);
     const amtCell = (val) => (val ? esc(fmtAmt(val)) : dash);
     const qtyCell = (val) => (val ? esc(fmtQty(val)) : dash);
@@ -1187,18 +1203,19 @@
         + tile(t('Bought for this RAB'), bought, t('{n} purchases', { n: buys.length }));
     }
 
-    /** w: { empId, wage, saved } — saved rows show their reports and payment */
+    /** w: { empId, jobId, wage, saved } — saved rows show their reports and payment */
     function workerRow(w, n) {
       const info = w.saved ? team.find((x) => x.empId === w.empId) : null, locked = !!(info && (info.reports || info.pay));
       if (ro) {
-        return `<tr><td class="n">${n}</td><td>${esc(info.emp)}${info.dept ? `<div class="muted small">${esc(info.dept)}</div>` : ''}</td><td class="num">${amtCell(info.wage)}</td>
-          <td class="num">${qtyCell(info.reports)}</td><td>${paidCell(info, admin)}</td></tr>`;
+        return `<tr><td class="n">${n}</td><td>${esc(info.emp)}${info.dept ? `<div class="muted small">${esc(info.dept)}</div>` : ''}</td><td>${info.job ? esc(info.job) : dash}</td>
+          <td class="num">${amtCell(info.wage)}</td><td class="num">${qtyCell(info.reports)}</td><td>${paidCell(info, admin)}</td></tr>`;
       }
       const lock = locked ? `disabled title="${esc(t('This employee has reported work or is paid on this RAB.'))}"` : '';
       return `<tr data-saved="${w.saved ? 1 : ''}">
         <td class="n">${n}</td>
         <td><select name="emp" aria-label="${esc(t('Employee'))}" ${lock}><option value="">${esc(t('— choose —'))}</option>
           ${emps.map((e) => `<option value="${esc(e.id)}" ${w.empId === e.id ? 'selected' : ''}>${esc(e.name + (e.dept ? ' — ' + e.dept : ''))}</option>`).join('')}</select></td>
+        <td><select name="job" aria-label="${esc(t('Type of work'))}">${jobOptions(w.jobId)}</select></td>
         <td><input name="wage" type="number" step="any" min="0" inputmode="decimal" value="${w.wage ?? ''}" placeholder="0" aria-label="${esc(t('Wage'))}"></td>
         <td class="num">${qtyCell(info && info.reports)}</td><td>${info ? paidCell(info, false) : dash}</td>
         <td class="actions">${locked ? '' : del(t('Remove employee'))}</td></tr>`;
@@ -1254,14 +1271,14 @@
         ${head}
         <div class="card flush">
           <div class="card-head"><div><h2>${esc(t('Employees and wages'))}</h2>
-            <div class="muted small">${esc(t('Who works on this RAB, with one wage each for the whole RAB. They can all use the items below.'))}</div></div>
+            <div class="muted small">${esc(t('Who works on this RAB, the type of work each one does, and one wage each for the whole RAB. They can all use the items below.'))}</div></div>
             ${ro && admin ? `<button type="button" id="b-pay">${esc(t('Pay wages'))}…</button>` : ''}</div>
           <div class="tbl-wrap"><table class="tbl lines">
-            <thead><tr><th class="n">#</th><th>${esc(t('Employee'))}</th><th class="num">${esc(t('Wage'))}</th><th class="num">${esc(t('Reports'))}</th><th>${esc(t('Paid'))}</th>${ro ? '' : '<th></th>'}</tr></thead>
+            <thead><tr><th class="n">#</th><th>${esc(t('Employee'))}</th><th>${esc(t('Type of work'))}</th><th class="num">${esc(t('Wage'))}</th><th class="num">${esc(t('Reports'))}</th><th>${esc(t('Paid'))}</th>${ro ? '' : '<th></th>'}</tr></thead>
             <tbody id="team"></tbody>
-            <tfoot><tr><td colspan="2">${esc(t('Total'))}</td><td class="num" id="o-wage"></td><td colspan="${ro ? 2 : 3}"></td></tr></tfoot>
+            <tfoot><tr><td colspan="3">${esc(t('Total'))}</td><td class="num" id="o-wage"></td><td colspan="${ro ? 2 : 3}"></td></tr></tfoot>
           </table></div>
-          ${ro ? '' : `<div class="card-pad"><button type="button" id="b-emp">+ ${esc(t('Add employee'))}</button></div>`}
+          ${ro ? '' : `<div class="card-pad"><div class="row"><button type="button" id="b-emp">+ ${esc(t('Add employee'))}</button><button type="button" id="b-newjob">+ ${esc(t('New type of work'))}</button></div></div>`}
         </div>
         <div class="card flush">
           <div class="card-head"><div><h2>${esc(t('Items'))}</h2>
@@ -1341,7 +1358,7 @@
 
     const form = $('#rabForm');
     // ---- employees and wages
-    const collectTeam = () => $$('tr', tteam).map((tr) => ({ empId: $('[name=emp]', tr).value, wage: num($('[name=wage]', tr).value), saved: !!tr.dataset.saved }));
+    const collectTeam = () => $$('tr', tteam).map((tr) => ({ empId: $('[name=emp]', tr).value, jobId: $('[name=job]', tr).value, wage: num($('[name=wage]', tr).value), saved: !!tr.dataset.saved }));
     function renderTeam(list) {
       tteam.innerHTML = list.map((w, i) => workerRow(w, i + 1)).join('');
       wageTotal();
@@ -1356,6 +1373,15 @@
       renderTeam(list.length ? list : [{}]);
     });
     $('#b-emp').addEventListener('click', () => { renderTeam(collectTeam().concat([{}])); $('tr:last-child [name=emp]', tteam).focus(); });
+    // a type of work that is not in the master data yet: add it, then give it to the last employee without one
+    $('#b-newjob').addEventListener('click', () => editMaster('jobs', null, null, (row) => {
+      if (!row) return;
+      keepJobs.add(row.id);
+      const list = collectTeam(), i = list.map((w) => !w.jobId).lastIndexOf(true);
+      if (i >= 0) list[i].jobId = row.id; else list.push({ jobId: row.id });
+      renderTeam(list);
+      $(`tr:nth-child(${i >= 0 ? i + 1 : list.length}) [name=${i >= 0 && list[i].empId ? 'wage' : 'emp'}]`, tteam).focus();
+    }));
 
     // ---- items
     const collect = () => $$('tr', tbody).map((tr) => {
@@ -1425,7 +1451,7 @@
         location.hash = '#/rab';
       });
     }
-    renderTeam(team.length ? team.map((w) => ({ empId: w.empId, wage: w.wage, saved: true })) : [{}]);
+    renderTeam(team.length ? team.map((w) => ({ empId: w.empId, jobId: w.jobId, wage: w.wage, saved: true })) : [{}]);
     renderLines(rab ? prog.lines : [{}]);
     if (!rab) form.title.focus();
   }
@@ -1562,14 +1588,17 @@
     const tasks = S.tasks(me.empId);
     const open = tasks.flatMap((x) => x.lines.filter((l) => l.left > 0).map((l) => Object.assign({ rab: x.rab }, l)));
     const qu = (q, unit) => (fmtQty(q) + ' ' + unit).trim();
-    const mates = (rab) => rab.workers.filter((w) => w.empId !== me.empId).map((w) => (S.find('employees', w.empId) || { name: '?' }).name);
+    const mates = (rab) => rab.workers.filter((w) => w.empId !== me.empId).map((w) => {
+      const name = (S.find('employees', w.empId) || { name: '?' }).name, job = S.jobOf(rab, w.empId);
+      return job ? `${name} (${job})` : name;
+    });
     // an item of a RAB can be reported while something is left; it is done once everything planned is reported
     const lineAct = (l) => (l.left > 0 ? `<button type="button" class="sm" data-line="${esc(l.id)}">${esc(t('Report this'))}</button>` : rabBadge('done'));
     const reported = (l) => (l.used + l.waiting ? qu(C.round(l.used + l.waiting, 4), l.unit) : '');
     const waitNote = (l) => (l.waiting ? `<div class="warn-text small">${esc(t('{qty} waiting for approval', { qty: qu(l.waiting, l.unit) }))}</div>` : '');
     const rabCard = (x) => `<div class="card flush">
         <div class="card-head"><div><h2>${esc(x.rab.no + ' · ' + x.rab.title)}</h2>
-          <div class="muted small">${esc([t('Your wage: {wage}', { wage: x.wage ? fmtAmt(x.wage) : '—' }), mates(x.rab).length ? t('With {names}', { names: mates(x.rab).join(', ') }) : ''].filter(Boolean).join(' · '))}</div></div></div>
+          <div class="muted small">${esc([x.job ? t('Your work: {job}', { job: x.job }) : '', t('Your wage: {wage}', { wage: x.wage ? fmtAmt(x.wage) : '—' }), mates(x.rab).length ? t('With {names}', { names: mates(x.rab).join(', ') }) : ''].filter(Boolean).join(' · '))}</div></div></div>
         <div class="tbl-wrap"><table class="tbl cards">
           <thead><tr><th>${esc(t('Item'))}</th><th class="num">${esc(t('Planned'))}</th><th class="num">${esc(t('Reported'))}</th><th class="num">${esc(t('Left'))}</th><th></th></tr></thead>
           <tbody>${x.lines.map((l) => `<tr><td>${esc(l.item)}</td><td class="num">${esc(qu(l.qty, l.unit))}</td>
@@ -1720,6 +1749,7 @@
     { group: 'Master data', roles: ['admin'] },
     { page: 'master/items', label: 'Items', icon: 'items', roles: ['admin'] },
     { page: 'master/employees', label: 'Employees', icon: 'employees', roles: ['admin'] },
+    { page: 'master/jobs', label: 'Types of work', icon: 'jobs', roles: ['admin'] },
     { page: 'master/units', label: 'Units', icon: 'units', roles: ['admin'] },
     { page: 'master/users', label: 'Users', icon: 'users', roles: ['admin'] },
   ];
